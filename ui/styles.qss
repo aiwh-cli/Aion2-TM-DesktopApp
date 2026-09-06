@@ -2349,6 +2349,31 @@ QToolTip {
     background: transparent;
 }
 
+#OverlayRowValue {
+    color: #f1f5f9;
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+}
+
+#OverlayMenu {
+    background: rgba(14, 16, 24, 0.98);
+    border: 1px solid rgba(100, 116, 139, 0.35);
+    border-radius: 6px;
+    padding: 4px 0px;
+}
+
+#OverlayMenu QCheckBox {
+    color: #cbd5e1;
+    font-size: 12px;
+    padding: 4px 14px;
+    background: transparent;
+}
+
+#OverlayMenu QCheckBox:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
 #OverlayEmpty {
     color: #334155;
     font-size: 11px;

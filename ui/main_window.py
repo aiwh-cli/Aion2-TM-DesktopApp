@@ -12,6 +12,12 @@ from .widgets.header_widget import HeaderWidget
 from .widgets.sidebar_widget import SidebarWidget
 from .widgets.shopping_card import ShoppingCard
 from .widgets.template_dialog import TemplateDialog
+# _TemplateEditDialog is otherwise module-private to template_dialog.py --
+# reused here (User-Wunsch, 2026-09-05) so the Item Database's "Add to
+# Templates" context menu action gets the exact same Schedule/Location/
+# Price form as manually adding a template, instead of a second
+# hand-rolled copy of it.
+from .widgets.template_dialog import _TemplateEditDialog
 from .pages.tasks_page import TasksPage
 from .pages.timers_page import TimersPage
 from .pages.todo_tabs_page import TodoTabsPage
@@ -317,6 +323,17 @@ class MainWindow(QMainWindow):
         # actually created, and refreshed from it (if open) on every save.
         self._build_planner_state: dict | None = None
 
+        # In-game overlay: which accordion sections are shown (User-Wunsch,
+        # 2026-09-05: gear icon back in the overlay title bar, opening a
+        # picker for this). Tasks/Guide/Timer/Custom Timer stay on by
+        # default (matches the overlay's previous always-on behavior plus
+        # the new Timer sections); Skill/Gear Priority default off since
+        # they need the Armory beta set up first.
+        self.overlay_visible_sections: dict = {
+            "tasks": True, "guide": True, "timer": True, "custom_timer": True,
+            "skill_priority": False, "gear_priority": False,
+        }
+
         self.flow_map_window = FlowMapWindow(self, language=self.language, tr_func=tr)
         self.flow_map_window.map_switch_requested.connect(self._switch_flow_map)
         self.flow_map_window.map_add_requested.connect(self._add_flow_map)
@@ -580,8 +597,75 @@ class MainWindow(QMainWindow):
                 self.item_database_window.set_theme(self.current_theme)
             if self._build_planner_state and hasattr(self.item_database_window, "set_pending_loadout_state"):
                 self.item_database_window.set_pending_loadout_state(self._build_planner_state)
+            if hasattr(self.item_database_window, "add_to_templates_requested"):
+                self.item_database_window.add_to_templates_requested.connect(
+                    self._add_item_database_item_to_templates
+                )
 
         return self.item_database_window
+
+    def _add_item_database_item_to_templates(self, item_id: int, name: str):
+        """Item Database's right-click "Add to Templates" (User-Wunsch,
+        2026-09-05): the user first picks Task or Shopping, then gets the
+        same Schedule/Location/Price form used everywhere else for adding a
+        template (_TemplateEditDialog) -- pre-filled with Location (from
+        the item's real "sources", if its detail happens to be cached
+        already) and Price (if the catalog ever carries one; it currently
+        never does, kept as a real lookup rather than a hardcoded "0" so it
+        starts working the moment that data exists) "falls vorhanden",
+        left blank otherwise. Title only ever comes from the picked item;
+        everything else stays freely editable in that same dialog."""
+        choice_box = QMessageBox(self)
+        choice_box.setWindowTitle(tr(self.language, "arm_add_to_template_choice_title"))
+        choice_box.setText(tr(self.language, "arm_add_to_template_choice_body", name=name))
+        task_btn = choice_box.addButton(tr(self.language, "tab_tasks"), QMessageBox.ActionRole)
+        shopping_btn = choice_box.addButton(tr(self.language, "tab_shopping"), QMessageBox.ActionRole)
+        choice_box.addButton(QMessageBox.Cancel)
+        choice_box.exec()
+        clicked = choice_box.clickedButton()
+        if clicked not in (task_btn, shopping_btn):
+            return
+        is_task = clicked is task_btn
+
+        location = ""
+        price = ""
+        window = self.item_database_window
+        if window is not None:
+            cached_detail = window.detail_cache.get(item_id)
+            sources = (cached_detail or {}).get("sources") or []
+            location = ", ".join(sources)
+            raw_item = next((it for it in window._raw_items if it.get("id") == item_id), None)
+            price = str((raw_item or {}).get("price") or "")
+
+        dlg = _TemplateEditDialog(
+            {"title": name, "location": location, "price": price},
+            known_locations=self._known_template_locations(is_task),
+            parent=self, task_mode=is_task,
+            language=self.language, tr_func=tr,
+        )
+        if not dlg.exec():
+            return
+        data = dlg.get_data()
+        import uuid as _uuid
+        data["id"] = str(_uuid.uuid4())
+        if is_task:
+            self.task_templates.append(data)
+            self.tasks_page.update_task_templates(self.task_templates)
+        else:
+            self.item_templates.append(data)
+            self.tasks_page.update_templates(self.item_templates)
+        if self.auto_save:
+            self.save_profile(silent=True)
+
+    def _known_template_locations(self, is_task: bool) -> list[str]:
+        templates = self.task_templates if is_task else self.item_templates
+        seen, result = set(), []
+        for tmpl in templates:
+            loc = (tmpl.get("location") or "").strip()
+            if loc and loc not in seen:
+                seen.add(loc)
+                result.append(loc)
+        return result
 
     def open_template_item_picker(self, parent_widget=None) -> dict | None:
         """Lazily loads the ItemDatabase module (same singleton pattern as
@@ -618,6 +702,92 @@ class MainWindow(QMainWindow):
         logger.debug("Opening Crafting Calculator window")
         window = self._ensure_item_database_window()
         window.open_crafting_calculator()
+
+    # ── Overlay: Skill/Gear Priority sections (User-Wunsch, 2026-09-05) ──
+    # Read straight from the persisted Build Planner state (_build_planner_
+    # state), not a live LoadoutWindow -- that dict is populated on profile
+    # load regardless of whether Armory was ever opened this session (see
+    # _build_planner_state's own comment). The one exception is skill-id ->
+    # name resolution, which needs the ItemDatabase module loaded at least
+    # once (ensure_loadout_window() below pays that cost, hidden, the first
+    # time one of these sections is actually toggled on in the overlay).
+
+    def get_skill_priority_rows(self) -> list[dict] | None:
+        """Flat ranked list (active skills first, then passive -- same
+        order as the Priority List itself) for the overlay's Skill Priority
+        section. None if there's nothing to show (section stays hidden)."""
+        state = self._build_planner_state or {}
+        class_name = (state.get("character_class") or "").strip().lower()
+        build_name = state.get("current_skill_build_name", "Default")
+        build = state.get("skill_builds_data", {}).get(class_name, {}).get(build_name)
+        if not class_name or not build:
+            return None
+        priority = build.get("priority", {})
+        ids = [sid for sid in priority.get("active", []) if sid]
+        ids += [sid for sid in priority.get("passive", []) if sid]
+        if not ids:
+            return None
+
+        self._ensure_item_database_window()
+        module = self._item_database_module
+        skills_by_id = {}
+        for skill in module._load_skills_by_class().get(class_name, []):
+            skills_by_id[str(skill.get("id"))] = skill
+
+        return [
+            {"id": sid, "name": skills_by_id.get(str(sid), {}).get("name", str(sid))}
+            for sid in ids
+        ]
+
+    def get_equip_priority_rows(self) -> list[tuple[str, dict]] | None:
+        """One (section_key, item) pair per equip-priority slot-chain that
+        still has a not-yet-checked-off item -- the overlay only ever shows
+        the CURRENT item per chain (progressive reveal, User-Wunsch,
+        2026-09-05), unlike Skill Priority's flat always-visible list. None
+        if nothing qualifies (section stays hidden)."""
+        state = self._build_planner_state or {}
+        class_name = (state.get("character_class") or "").strip().lower()
+        build_name = state.get("current_build_name", "Default")
+        build = state.get("equip_builds_data", {}).get(class_name, {}).get(build_name)
+        if not class_name or not build:
+            return None
+        priority = build.get("priority", {})
+        progress = build.get("priority_progress", {})
+        rows = []
+        for section_key, chain in priority.items():
+            idx = progress.get(section_key, 0)
+            if idx < len(chain) and chain[idx]:
+                rows.append((section_key, chain[idx]))
+        return rows or None
+
+    def advance_equip_priority(self, section_key: str):
+        """Checks off the current item in one Gear Priority chain, called
+        from the overlay's check button. Routes through the live Build
+        Planner window if it's open AND currently showing the same class +
+        build the overlay is reading from (keeps that window's own UI in
+        sync); otherwise edits the persisted state dict directly."""
+        state = self._build_planner_state or {}
+        class_name = (state.get("character_class") or "").strip().lower()
+        build_name = state.get("current_build_name", "Default")
+
+        window = self.item_database_window
+        live_loadout = window.get_loadout_window_if_open() if window else None
+        live_matches = (
+            live_loadout is not None
+            and live_loadout.character_class_combo.currentText().strip().lower() == class_name
+            and live_loadout._current_equip_build_name == build_name
+        )
+        if live_matches:
+            live_loadout.advance_equip_priority(section_key)
+            self._build_planner_state = window.get_loadout_state()
+        else:
+            build = state.get("equip_builds_data", {}).get(class_name, {}).get(build_name)
+            if build is not None:
+                progress = build.setdefault("priority_progress", {})
+                chain = build.get("priority", {}).get(section_key, [])
+                if progress.get(section_key, 0) < len(chain):
+                    progress[section_key] = progress.get(section_key, 0) + 1
+        self.save_profile(silent=True)
 
     def _switch_flow_map(self, name: str):
         if name == self.active_flow_map_name or not name:
@@ -1322,15 +1492,17 @@ class MainWindow(QMainWindow):
             parts = []
             if total_kinah_k > 0:
                 parts.append(self.format_kinah_price(total_kinah_k))
+            # AP/NP/SC all get the same thousands/k-m scaling as Kinah
+            # (User-Wunsch, 2026-09-05: first just SC, then "jetzt noch die
+            # gleiche Anpassung für NP und AP" -- matches the same fix
+            # already applied to ShoppingCard.format_price for individual
+            # item prices).
             if total_ap > 0:
-                ap_int = int(total_ap) if total_ap == int(total_ap) else total_ap
-                parts.append(f"{ap_int} AP")
+                parts.append(self.format_scaled_price(total_ap, "AP"))
             if total_np > 0:
-                np_int = int(total_np) if total_np == int(total_np) else total_np
-                parts.append(f"{np_int} NP")
+                parts.append(self.format_scaled_price(total_np, "NP"))
             if total_sc > 0:
-                sc_int = int(total_sc) if total_sc == int(total_sc) else total_sc
-                parts.append(f"{sc_int} SC")
+                parts.append(self.format_scaled_price(total_sc, "SC"))
             price_str = " + ".join(parts) if parts else "—"
             self.tasks_page.set_footer_text(
                 f"● {tr(self.language, 'progress')}: {progress}%   |   "
@@ -1825,6 +1997,10 @@ class MainWindow(QMainWindow):
         self._custom_notified = [False] * 8
         self.timers_page.rebuild_custom_sections(self.timer_categories, self.custom_timers)
 
+        saved_overlay_sections = settings.get("overlay_visible_sections")
+        if isinstance(saved_overlay_sections, dict):
+            self.overlay_visible_sections.update(saved_overlay_sections)
+
         self.toggle_events()
         self.update_countdowns()
 
@@ -2055,6 +2231,7 @@ class MainWindow(QMainWindow):
                     if self.last_weekly_reset_date else None
                 ),
                 "missed_daily_activities": self.missed_daily_activities,
+                "overlay_visible_sections": self.overlay_visible_sections,
             },
 
             "tasks": {
@@ -3401,20 +3578,27 @@ class MainWindow(QMainWindow):
         self.save_profile(explicit=True)
 
     def format_kinah_price(self, value):
+        return self.format_scaled_price(value, "Kinah")
+
+    def format_scaled_price(self, value, unit: str):
+        """Shared thousands/k-m scaling for every real currency total
+        (Kinah, SC, AP, NP) -- User-Wunsch, 2026-09-05, applied
+        incrementally: Kinah already had it, then SC, then "die gleiche
+        Anpassung für NP und AP"."""
         try:
-            kinah = float(str(value).replace(",", ".").strip()) * 1000
+            scaled = float(str(value).replace(",", ".").strip()) * 1000
         except ValueError:
-            kinah = 0
+            scaled = 0
 
-        if kinah >= 1_000_000:
-            millions = kinah / 1_000_000
-            return f"{millions:g}m Kinah"
+        if scaled >= 1_000_000:
+            millions = scaled / 1_000_000
+            return f"{millions:g}m {unit}"
 
-        if kinah >= 1_000:
-            thousands = kinah / 1_000
-            return f"{thousands:g}k Kinah"
+        if scaled >= 1_000:
+            thousands = scaled / 1_000
+            return f"{thousands:g}k {unit}"
 
-        return f"{int(kinah)} Kinah"
+        return f"{int(scaled)} {unit}"
     
     def set_task_filter(self, filter_key):
         self.active_filter = filter_key

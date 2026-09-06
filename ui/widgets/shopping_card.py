@@ -160,23 +160,24 @@ class ShoppingCard(QFrame):
         except ValueError:
             raw = 0
 
-        if currency == "abyss":
-            return f"{int(raw) if raw == int(raw) else raw} AP"
+        # Every real in-game currency (Kinah, Abyss Points, Nightmare
+        # Points, Shugo/Season Coins) gets the same "stored in thousands,
+        # shown with a k/m suffix" treatment (User-Wunsch, 2026-09-05:
+        # first just Kinah, extended to SC, then "jetzt noch die gleiche
+        # Anpassung für NP und AP" -- consistent scaling across all four).
+        units = {"kinah": "Kinah", "shugo": "SC", "abyss": "AP", "nightmare": "NP"}
+        unit = units.get(currency)
+        if unit:
+            scaled = raw * 1000
+            if scaled >= 1_000_000:
+                m = scaled / 1_000_000
+                return f"{int(m)}m {unit}" if m == int(m) else f"{m:.1f}m {unit}"
+            if scaled >= 1_000:
+                k = scaled / 1_000
+                return f"{int(k)}k {unit}" if k == int(k) else f"{k:.1f}k {unit}"
+            return f"{int(scaled)} {unit}"
 
-        if currency == "nightmare":
-            return f"{int(raw) if raw == int(raw) else raw} NP"
-
-        if currency == "shugo":
-            return f"{int(raw) if raw == int(raw) else raw} SC"
-
-        kinah = raw * 1000
-        if kinah >= 1_000_000:
-            m = kinah / 1_000_000
-            return f"{int(m)}m Kinah" if m == int(m) else f"{m:.1f}m Kinah"
-        if kinah >= 1_000:
-            k = kinah / 1_000
-            return f"{int(k)}k Kinah" if k == int(k) else f"{k:.1f}k Kinah"
-        return f"{int(kinah)} Kinah"
+        return f"{int(raw) if raw == int(raw) else raw} {currency.upper()}"
 
     def format_kinah_price(self, value):
         return self.format_price(value, "kinah")

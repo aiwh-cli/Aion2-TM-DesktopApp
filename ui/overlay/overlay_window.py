@@ -1,8 +1,10 @@
+from datetime import datetime
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QSlider,
+    QScrollArea, QSlider, QMenu, QWidgetAction, QCheckBox,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPainter, QColor, QLinearGradient, QBrush
 
 PRIORITY_COLORS = {
@@ -28,6 +30,28 @@ SCHEDULE_BADGES = {
     "weekly": ("W", QColor(139, 92,  246)),
     "season": ("S", QColor(245, 158, 11)),
 }
+
+TIMER_COLORS = {
+    "daily":  QColor(59,  130, 246),
+    "weekly": QColor(139, 92,  246),
+    "shugo":  QColor(245, 158, 11),
+    "rift":   QColor(34,  211, 238),
+}
+CUSTOM_TIMER_COLOR = QColor(20,  184, 166)
+SKILL_PRIORITY_COLOR = QColor(167, 139, 250)
+GEAR_PRIORITY_COLOR = QColor(34,  197, 94)
+
+# (key, display label, default-on) -- drives both the gear-icon popover and
+# refresh()'s per-section visibility gate. Order here is the order sections
+# appear in both the popover and the accordion.
+OVERLAY_SECTIONS = [
+    ("timer", "Timer", True),
+    ("custom_timer", "Custom Timer", True),
+    ("tasks", "Tasks", True),
+    ("guide", "Guide", True),
+    ("skill_priority", "Skill Priority", False),
+    ("gear_priority", "Gear Priority", False),
+]
 
 _BG       = QColor(10, 12, 18, 225)
 _TITLE_BG = QColor(14, 16, 24, 245)
@@ -124,6 +148,61 @@ class OverlayGuideRow(_ColoredRow):
         layout.addWidget(status_lbl)
 
 
+class OverlayInfoRow(_ColoredRow):
+    """Read-only labeled row (Timer / Custom Timer / Skill Priority): a
+    colored left border, a title, and a right-aligned value label. The
+    value label is swapped in place by OverlayWindow._tick_timers() for
+    rows that carry a live countdown, instead of rebuilding the row."""
+
+    def __init__(self, color: QColor, title: str, value: str, badge: str | None = None):
+        super().__init__(color)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(_BORDER_W + 6, 0, 8, 0)
+        layout.setSpacing(6)
+
+        if badge:
+            badge_lbl = QLabel(badge)
+            badge_lbl.setStyleSheet(
+                f"background: rgba({color.red()},{color.green()},{color.blue()},170);"
+                "color: #f8fafc; border-radius: 3px; padding: 0px 4px;"
+                "font-size: 9px; font-weight: bold;"
+            )
+            badge_lbl.setFixedHeight(14)
+            layout.addWidget(badge_lbl)
+
+        title_lbl = QLabel(title if len(title) <= 34 else title[:33] + "…")
+        title_lbl.setObjectName("OverlayRowTitle")
+        layout.addWidget(title_lbl, 1)
+
+        self.value_lbl = QLabel(value)
+        self.value_lbl.setObjectName("OverlayRowValue")
+        layout.addWidget(self.value_lbl)
+
+
+class OverlayCheckRow(_ColoredRow):
+    """Actionable labeled row (Gear Priority): a check button that fires a
+    callback when clicked -- used to advance a slot-chain's progress to its
+    next item, rather than toggling a simple done/undone flag."""
+
+    def __init__(self, color: QColor, title: str, on_check):
+        super().__init__(color)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(_BORDER_W + 6, 0, 8, 0)
+        layout.setSpacing(6)
+
+        self.check_btn = QPushButton("○")
+        self.check_btn.setObjectName("OverlayCheckBtn")
+        self.check_btn.setFixedSize(16, 16)
+        self.check_btn.setCursor(Qt.PointingHandCursor)
+        self.check_btn.clicked.connect(on_check)
+
+        title_lbl = QLabel(title if len(title) <= 40 else title[:39] + "…")
+        title_lbl.setObjectName("OverlayRowTitle")
+
+        layout.addWidget(self.check_btn)
+        layout.addWidget(title_lbl, 1)
+
+
 class _AccordionSection(QWidget):
     """A collapsible section: clickable header (chevron/title/count) + body.
 
@@ -204,6 +283,7 @@ class OverlayWindow(QWidget):
         # open_by_default (User-reported, 2026-08-30: checking a Guide item
         # closed the section again every time).
         self._section_open = {"Tasks": True, "Guide": False}
+        self._tick_callbacks = []
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -244,6 +324,16 @@ class OverlayWindow(QWidget):
         )
         self.setWindowOpacity(0.9)
 
+        # Gear icon (User-Wunsch, 2026-09-05: bring it back, this time as a
+        # section-visibility picker rather than its original Tasks/Guide
+        # mode-switch role -- see OverlayWindow._show_section_popover).
+        self._gear_btn = QPushButton("⚙")
+        self._gear_btn.setObjectName("OverlayIconBtn")
+        self._gear_btn.setFixedSize(26, 26)
+        self._gear_btn.setCursor(Qt.PointingHandCursor)
+        self._gear_btn.setToolTip("Overlay sections")
+        self._gear_btn.clicked.connect(self._show_section_popover)
+
         close_btn = QPushButton("✕")
         close_btn.setObjectName("OverlayIconBtn")
         close_btn.setFixedSize(26, 26)
@@ -252,6 +342,7 @@ class OverlayWindow(QWidget):
 
         title_row.addWidget(dot)
         title_row.addWidget(self._profile_lbl, 1)
+        title_row.addWidget(self._gear_btn)
         title_row.addWidget(self._opacity_slider)
         title_row.addWidget(close_btn)
 
@@ -291,6 +382,13 @@ class OverlayWindow(QWidget):
         self.resize(360, 300)
         self.refresh()
 
+        # Drives just the Timer/Custom Timer row value labels in place (see
+        # OverlayInfoRow / _tick_timers) -- a full refresh() every second
+        # would rebuild/flicker the whole accordion instead.
+        self._tick_timer = QTimer(self)
+        self._tick_timer.timeout.connect(self._tick_timers)
+        self._tick_timer.start(1000)
+
     # painting
 
     def paintEvent(self, event):
@@ -315,29 +413,191 @@ class OverlayWindow(QWidget):
                 item.widget().deleteLater()
 
         self._profile_lbl.setText(self.main_window.profile_name)
+        # Rebuilt from scratch each refresh -- rows register their own tick
+        # callback (see OverlayInfoRow usage below) so _tick_timers() can
+        # update just the value labels every second without a full rebuild.
+        self._tick_callbacks = []
 
-        sections = [self._build_tasks_section(), self._build_guide_section()]
-
-        # Skills/Equipment become sections here once their priority lists are
-        # actually persisted somewhere the overlay can read -- right now
-        # both live only in the Build Planner's in-memory session state, so
-        # there is nothing to show yet. Sections only ever appear when they
-        # have real content (see _AccordionSection docstring).
-        skill_data = self._skill_priority_data()
-        if skill_data:
-            sections.append(self._build_skill_section(skill_data))
-        equip_data = self._equip_priority_data()
-        if equip_data:
-            sections.append(self._build_equip_section(equip_data))
+        visible = getattr(self.main_window, "overlay_visible_sections", {})
+        sections = []
+        # Timer/Custom Timer lead (User-Wunsch, 2026-09-05: "ganz oben
+        # stehen") -- a countdown you might be watching for is more
+        # time-sensitive at a glance than the Tasks/Guide lists below it.
+        if visible.get("timer", True):
+            sections.append(self._build_timer_section())
+        if visible.get("custom_timer", True):
+            section = self._build_custom_timer_section()
+            if section:
+                sections.append(section)
+        if visible.get("tasks", True):
+            sections.append(self._build_tasks_section())
+        if visible.get("guide", True):
+            sections.append(self._build_guide_section())
+        if visible.get("skill_priority", False):
+            section = self._build_skill_priority_section()
+            if section:
+                sections.append(section)
+        if visible.get("gear_priority", False):
+            section = self._build_equip_priority_section()
+            if section:
+                sections.append(section)
 
         for section in sections:
             self._content_layout.insertWidget(self._content_layout.count() - 1, section)
 
-    def _skill_priority_data(self):
-        return None
+    def _tick_timers(self):
+        for callback in self._tick_callbacks:
+            callback()
 
-    def _equip_priority_data(self):
-        return None
+    # gear icon / section picker
+
+    def _show_section_popover(self):
+        mw = self.main_window
+        visible = mw.overlay_visible_sections
+        menu = QMenu(self)
+        menu.setObjectName("OverlayMenu")
+        for key, label, _default in OVERLAY_SECTIONS:
+            check = QCheckBox(label)
+            check.setChecked(bool(visible.get(key, False)))
+            check.toggled.connect(lambda checked, k=key: self._on_section_toggled(k, checked))
+            action = QWidgetAction(menu)
+            action.setDefaultWidget(check)
+            menu.addAction(action)
+        menu.exec(self._gear_btn.mapToGlobal(self._gear_btn.rect().bottomLeft()))
+
+    def _on_section_toggled(self, key: str, checked: bool):
+        self.main_window.overlay_visible_sections[key] = checked
+        self.main_window.save_profile(silent=True)
+        self.refresh()
+
+    # section builders
+
+    def _build_timer_section(self) -> "_AccordionSection":
+        mw = self.main_window
+        rows = []
+
+        def add_row(color, title, badge, get_seconds, formatter):
+            row = OverlayInfoRow(color, title, formatter(get_seconds()), badge=badge)
+            row_tick = lambda r=row: r.value_lbl.setText(formatter(get_seconds()))
+            self._tick_callbacks.append(row_tick)
+            rows.append(row)
+
+        add_row(
+            TIMER_COLORS["daily"], "Daily Reset", "D",
+            lambda: (mw.get_next_daily_reset() - datetime.now()).total_seconds(),
+            mw.format_reset_countdown,
+        )
+        add_row(
+            TIMER_COLORS["weekly"], "Weekly Reset", "W",
+            lambda: (mw.get_next_weekly_reset() - datetime.now()).total_seconds(),
+            mw.format_reset_countdown,
+        )
+        if getattr(mw, "shugo_enabled", False):
+            add_row(
+                TIMER_COLORS["shugo"], "Shugo Event", "Sh",
+                lambda: (mw.get_next_shugo_time() - datetime.now()).total_seconds(),
+                mw.format_countdown,
+            )
+        if getattr(mw, "riss_enabled", False):
+            add_row(
+                TIMER_COLORS["rift"], "Rift Timer", "Rf",
+                lambda: (mw.get_next_riss_time() - datetime.now()).total_seconds(),
+                mw.format_countdown,
+            )
+
+        section = _AccordionSection(
+            "Timer", len(rows),
+            open_by_default=self._section_open.setdefault("Timer", True),
+            on_toggle=lambda is_open: self._section_open.__setitem__("Timer", is_open),
+        )
+        for row in rows:
+            section.add_row(row)
+        return section
+
+    def _build_custom_timer_section(self):
+        mw = self.main_window
+        qualifying = [ct for ct in mw.custom_timers[:8] if ct.get("enabled") and ct.get("name")]
+        if not qualifying:
+            return None
+
+        rows = []
+        for ct in qualifying:
+            def compute(ct=ct) -> str:
+                now = datetime.now()
+                mode = ct.get("timer_mode", "hourly")
+                if mode == "daily":
+                    next_t = mw._get_next_daily_custom_time(ct.get("reset_time", "09:00"))
+                    return mw.format_reset_countdown((next_t - now).total_seconds())
+                if mode == "weekly":
+                    next_t = mw._get_next_weekly_custom_time(
+                        ct.get("reset_day", "Mo"), ct.get("reset_time", "09:00")
+                    )
+                    return mw.format_reset_countdown((next_t - now).total_seconds())
+                if mode == "custom":
+                    next_t = mw._get_next_custom_timer_time_seconds(
+                        max(60, ct.get("interval_seconds", 3600)), ct.get("start_time", "00:00"),
+                    )
+                    return mw.format_reset_countdown((next_t - now).total_seconds())
+                next_t = mw._get_next_custom_timer_time(ct.get("interval_minutes", 60))
+                return mw._format_custom_countdown((next_t - now).total_seconds(), "hh:mm:ss")
+
+            row = OverlayInfoRow(CUSTOM_TIMER_COLOR, ct.get("name", "Timer"), compute())
+            self._tick_callbacks.append(lambda r=row, c=compute: r.value_lbl.setText(c()))
+            rows.append(row)
+
+        section = _AccordionSection(
+            "Custom Timer", len(rows),
+            open_by_default=self._section_open.setdefault("Custom Timer", True),
+            on_toggle=lambda is_open: self._section_open.__setitem__("Custom Timer", is_open),
+        )
+        for row in rows:
+            section.add_row(row)
+        return section
+
+    def _build_skill_priority_section(self):
+        rows_data = self.main_window.get_skill_priority_rows()
+        if not rows_data:
+            return None
+
+        rows = [
+            OverlayInfoRow(SKILL_PRIORITY_COLOR, entry["name"], f"#{i + 1}")
+            for i, entry in enumerate(rows_data)
+        ]
+        section = _AccordionSection(
+            "Skill Priority", len(rows),
+            open_by_default=self._section_open.setdefault("Skill Priority", True),
+            on_toggle=lambda is_open: self._section_open.__setitem__("Skill Priority", is_open),
+        )
+        for row in rows:
+            section.add_row(row)
+        return section
+
+    def _build_equip_priority_section(self):
+        rows_data = self.main_window.get_equip_priority_rows()
+        if not rows_data:
+            return None
+
+        rows = []
+        for section_key, item in rows_data:
+            title = item.get("name", section_key)
+            row = OverlayCheckRow(
+                GEAR_PRIORITY_COLOR, title,
+                on_check=lambda _, sk=section_key: self._on_equip_priority_checked(sk),
+            )
+            rows.append(row)
+
+        section = _AccordionSection(
+            "Gear Priority", len(rows),
+            open_by_default=self._section_open.setdefault("Gear Priority", True),
+            on_toggle=lambda is_open: self._section_open.__setitem__("Gear Priority", is_open),
+        )
+        for row in rows:
+            section.add_row(row)
+        return section
+
+    def _on_equip_priority_checked(self, section_key: str):
+        self.main_window.advance_equip_priority(section_key)
+        self.refresh()
 
     # populate
 

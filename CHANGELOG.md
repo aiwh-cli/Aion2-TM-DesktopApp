@@ -18,7 +18,7 @@ These features are **not** part of an official update yet and are still under ac
 - Shows the full material chain for any craftable item: required ingredients can be expanded individually if they're themselves the result of another recipe.
 - Filter by profession (Blacksmithing, Armorsmithing, Handicrafting, Alchemy, Cooking), category and rarity.
 - Material icons show the matching rarity background (Common/Rare/Unique/Epic/Legend).
-- "Vergleich" tab compares crafting an item directly versus transferring it from an existing item of the same line, including Kinah cost.
+- "Compare" tab compares crafting an item directly versus transferring it from an existing item of the same line, including Kinah cost.
 
 ### Build Planner
 - Assemble a virtual gear loadout slot by slot, with real item stats.
@@ -36,6 +36,29 @@ These features are **not** part of an official update yet and are still under ac
 - Each Equip Build can now be linked to a specific Arcana/Skill Planner build and Genius Insight profile, so only that combination counts toward its stat panel/GearScore/damage estimate — useful once you're keeping more than one of each around.
 - Stat panel values now show a hover tooltip breaking down exactly where the number comes from (equipment, grouped into Weapon/Armor/Jewelry, plus Genius Insight, attributes, Arcana Lords, and the Daevanion Board); hovering a core-attribute/Lord value also shows what it feeds into, even at 0.
 - New Pantheon tab: a radial board (12 Artwork slots on the outer ring, 4 Statue slots on a middle ring, 1 Colossus slot in the center), filled from a left-hand inventory panel with search plus Rarity and Lord-value filters — each real item can only occupy one board slot at a time. Equipped Pantheon items' real Lord Points now feed the stat panel, GearScore, damage estimate, and Build Compare, the same way Arcana cards and gear already do.
+
+---
+
+# Version 1.9.4
+
+Release Date: 2026-09-06
+
+## ✨ New Features
+
+- **In-game overlay: new Timer and Custom Timer sections.** Daily Reset, Weekly Reset, Shugo Event and Rift Timer countdowns now live right in the overlay, along with your own Custom Timers — all ticking live. A new gear icon in the overlay's title bar lets you pick exactly which sections show (Tasks, Guide, Timer, Custom Timer, Skill Priority, Gear Priority).
+- **In-game overlay: Skill Priority and Gear Priority sections.** Skill Priority shows your class's current Priority List; Gear Priority shows just the next item you still need per equipment slot — check it off to reveal the next one in that slot's chain.
+- **Item Database: right-click context menu.** Show Details, Copy Name, and a new "Add to Templates" — pick Task or Shopping, and it pre-fills Location/Price from the item's own data where available.
+
+## 🎨 UI Changes
+
+- Item Database: removed the "Classes" column from the item table.
+- Item Database: the enchant simulator no longer shows up while just browsing the catalog — it's still there in the Build Planner, where simulating an equip actually matters.
+
+## 🐛 Bug Fixes
+
+- **Wings items showed no stats at all in their detail popup, and the Equip/Owned Effect filters only ever showed "All".** shugo.gg silently relabeled their internal text from "Equip Effect" to "Equipped Effect", breaking how we read it — both are fixed now.
+- **The item detail popup could show clipped or missing content for items with a lot of stats.** It only ever sized itself once, based on whatever had loaded at that moment — it now resizes to fit each item's actual content.
+- **Shopping/Task prices in Shugo Coins, Abyss Points, and Nightmare Points didn't use the "k"/"m" thousands shorthand Kinah already had**, both for individual items and the Total Price summary — now consistent across all four currencies.
 
 ---
 

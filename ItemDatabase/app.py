@@ -238,6 +238,11 @@ _EQUIPMENT_SLOT_PLACEHOLDER = {
     "Earring2": "earrings_2", "Necklace": "necklace", "Amulet": "amulet",
     "Ring1": "ring_1", "Ring2": "ring_2",
     "Bracelet1": "bracelet_1", "Bracelet2": "bracelet_2",
+    # User-supplied (2026-09-06, transparent-background wing silhouette,
+    # matching this dict's existing art style) -- real placeholder art now
+    # exists for Wings1, so it no longer needs the faded-real-item-icon
+    # fallback (_SYNTHETIC_SLOT_PLACEHOLDER_ITEM) Rune1/Rune2 still use.
+    "Wings1": "wings",
 }
 
 def _placeholder_icon(subdir: str, name: str) -> QIcon | None:
@@ -265,8 +270,12 @@ def _faded_pixmap(pixmap: "QPixmap", opacity: float = 0.35) -> "QPixmap":
     return faded
 ID_COLUMN = 1
 
-COLUMNS = ["Icon", "ID", "Name", "Grade", "Category", "Classes", "Tradable", "PvP/PvE", "Lord Values"]
-GEAR_TYPE_COLUMN = 7
+
+# "Classes" column removed (User-Wunsch, 2026-09-05) -- classNames data is
+# still parsed/used internally (weapon-category narrowing, etc.), just no
+# longer shown as its own table column.
+COLUMNS = ["Icon", "ID", "Name", "Grade", "Category", "Tradable", "PvP/PvE", "Lord Values"]
+GEAR_TYPE_COLUMN = 6
 # Real Pantheon Lord points (see fetch_pantheon_items.py/_load_pantheon_
 # items) -- its own trailing column rather than folded into an existing
 # one, hidden by default (setColumnHidden, same mechanism the "Show Item
@@ -274,7 +283,7 @@ GEAR_TYPE_COLUMN = 7
 # "Pantheon" sidebar group is active (User-Wunsch, 2026-09-04: "können wir
 # die Spalten anpassen, je nachdem, welche Kategorie rechts ausgewählt
 # wird?").
-LORD_VALUES_COLUMN = 8
+LORD_VALUES_COLUMN = 7
 
 # Parsed Wings Equip/Owned Effect stat names (see _parse_wing_effects) are
 # stashed on the ID column's QStandardItem under these roles -- there's no
@@ -287,6 +296,13 @@ WING_OWNED_STATS_ROLE = Qt.UserRole + 1
 # above -- backs both the "illu"+"Wisdom" AND-filter and the Lord Values
 # column (User-Wunsch, 2026-09-04).
 PANTHEON_STATS_ROLE = Qt.UserRole + 2
+# The raw catalog item's own "description" text (Wings' real Equip/Owned
+# Effect values live only here -- see _parse_wing_effect_lines -- the
+# separate per-item DETAILS API/cache never includes this field at all,
+# confirmed empty across every real cached detail). Stashed at load time so
+# the detail popup (which only otherwise sees the details-API response) can
+# still show it.
+WING_DESCRIPTION_ROLE = Qt.UserRole + 3
 
 GRADE_COLORS = {
     "Common": "#94a3b8",
@@ -491,7 +507,14 @@ def _gear_group_categories() -> set[str]:
     return result
 
 
-_WING_EFFECT_RE = re.compile(r"\[Equip Effect\](.*?)\[Owned Effect\](.*)", re.S)
+# Real bug found + fixed (User-reported, 2026-09-05: "die Werte der Wings
+# werden nicht mehr angezeigt") -- shugo.gg silently relabeled its own
+# description text from "[Equip Effect]" to "[Equipped Effect]" sometime
+# after this regex was written, so every real Wings item's stats stopped
+# parsing at all (matched zero items instead of the same 86 as before).
+# "Equip(?:ped)? Effect" accepts both spellings, so a future revert (or any
+# item still using the old wording) keeps working too.
+_WING_EFFECT_RE = re.compile(r"\[Equip(?:ped)? Effect\](.*?)\[Owned Effect\](.*)", re.S)
 
 
 def _parse_wing_effects(description: str) -> tuple[set[str], set[str]]:
@@ -525,6 +548,24 @@ def _parse_wing_effects(description: str) -> tuple[set[str], set[str]]:
         return names
 
     return _stat_names(match.group(1)), _stat_names(match.group(2))
+
+
+def _parse_wing_effect_lines(description: str) -> tuple[list[str], list[str]]:
+    """Same source/shape as _parse_wing_effects, but keeps each full "Stat:
+    Value" line instead of collapsing to just the stat name -- used by
+    ItemDetailWidget._render_stats() to actually show a Wings item's real
+    values (User-reported, 2026-09-05: the detail popup showed no stats at
+    all for Wings items, since _render_stats had no branch for them --
+    _parse_wing_effects alone was never enough for display, only for the
+    Equip/Owned Effect filter, which only needs stat names)."""
+    match = _WING_EFFECT_RE.search(description or "")
+    if not match:
+        return [], []
+
+    def _lines(block: str) -> list[str]:
+        return [line.strip() for line in block.strip().splitlines() if line.strip()]
+
+    return _lines(match.group(1)), _lines(match.group(2))
 
 
 # Per-rarity backdrop is the real texture image the user sourced from
@@ -1399,6 +1440,7 @@ class ItemDetailWidget(QWidget):
         self._item_id: int | None = None
         self._image_url: str = ""
         self._detail: dict | None = None
+        self._catalog_description: str = ""
         self._enchant_level = 0
         self._philosopher_stone_active = False
         # Only set when load_item() is given a character_class (the Build
@@ -1634,8 +1676,17 @@ class ItemDetailWidget(QWidget):
         self, item_id: int, name: str, image_url: str,
         preset_substats: set[int] | None = None, preset_enchant: int = 0,
         character_class: str | None = None, preset_philosopher_stone: bool = False,
+        catalog_description: str = "",
     ):
-        """preset_substats/preset_enchant restore a previously-saved
+        """catalog_description is the raw CATALOG item's own "description"
+        text (Wings' real Equip/Owned Effect values, see
+        _parse_wing_effect_lines) -- the separate per-item DETAILS API/cache
+        (self._detail, populated below) never includes this field at all
+        (confirmed empty across every real cached detail file), so it has
+        to be handed in separately by whichever caller already has the raw
+        catalog row (see WING_DESCRIPTION_ROLE).
+
+        preset_substats/preset_enchant restore a previously-saved
         selection when reopening an already-equipped slot — without them,
         every reopen would silently reset the item back to +0/no substats,
         even though the slot's actual saved state (used for Stat Info)
@@ -1649,6 +1700,7 @@ class ItemDetailWidget(QWidget):
         self._item_id = item_id
         self._image_url = image_url
         self._detail = None
+        self._catalog_description = catalog_description
         self._enchant_level = preset_enchant
         self._selected_substats = set(preset_substats or ())
         self._selected_substats_order = list(self._selected_substats)
@@ -1698,6 +1750,7 @@ class ItemDetailWidget(QWidget):
         self._item_id = None
         self._image_url = ""
         self._detail = None
+        self._catalog_description = ""
         self._enchant_level = 0
         self._selected_substats = set()
         self._selected_substats_order = []
@@ -1768,8 +1821,14 @@ class ItemDetailWidget(QWidget):
         # Requiring type=="Equip" on top of enchantable hid the slider for
         # every accessory slot -- enchantable alone is already the
         # authoritative signal, so use that on its own.
+        # Enchant simulator hidden entirely in the plain (browse-only) Item
+        # Database popup (User-Wunsch, 2026-09-05: "ists nicht wichtig, dass
+        # man das Item enhancen kann") -- simulating an enchant level only
+        # makes sense once you're actually planning an equipped instance
+        # (the Build Planner's equip panel, selectable=True), not while
+        # just browsing what an item IS.
         is_equipment = bool(detail.get("enchantable"))
-        self._set_enchant_controls_visible(bool(is_equipment))
+        self._set_enchant_controls_visible(bool(is_equipment) and self._selectable)
         if is_equipment:
             self._normal_max_enchant = int(detail.get("maxEnchantLevel") or 0)
             self._max_enchant = self._normal_max_enchant + int(detail.get("maxExceedEnchantLevel") or 0)
@@ -1934,6 +1993,37 @@ class ItemDetailWidget(QWidget):
                     lines.append(f"{lord_name}: {_format_number(value)}")
             else:
                 lines.append("<i>No Lord data available for this item yet.</i>")
+        elif category_name in ("Wings", "Wings Unlocking Item"):
+            # Real bug found + fixed (User-reported, 2026-09-05, screenshot:
+            # "Ancient Aullaeu Wings" detail popup showed no stats at all).
+            # Wings carry no mainStats (confirmed empty for all 86 real
+            # entries, see _parse_wing_effects) -- their real values only
+            # ever show up as free text in `description`. Reuses that same
+            # parsed shape (_parse_wing_effect_lines), just keeping full
+            # "Stat: Value" lines instead of collapsing to stat names.
+            equip_lines, owned_lines = _parse_wing_effect_lines(self._catalog_description)
+            if equip_lines or owned_lines:
+                if equip_lines:
+                    lines.append("<b>Equip Effect</b>")
+                    lines.extend(equip_lines)
+                if owned_lines:
+                    lines.append("<b>Owned Effect</b>")
+                    lines.extend(owned_lines)
+            else:
+                lines.append("<i>No stat data available for this item.</i>")
+        elif category_name == "Wings Equip":
+            # Wings1 slot items (User-Wunsch, 2026-09-06) -- same "fixed,
+            # un-upgradeable slot filler" framing as the Pantheon branch
+            # above: no enchant level, real stats come from questlog.gg's
+            # data via _load_wings_items (level 0 only, see that
+            # function's own docstring for why).
+            wings_stats = _load_wings_items().get(str(self._detail.get("id") or ""), {})
+            if wings_stats:
+                lines.append("<b>Wings Stats</b>")
+                for stat_id, value in wings_stats.items():
+                    lines.append(f"{stat_id}: {_format_number(value)}")
+            else:
+                lines.append("<i>No stat data available for this item.</i>")
 
         self.main_stats_label.setText("<br>".join(lines))
 
@@ -2268,7 +2358,13 @@ class ItemDetailDialog(QDialog):
         super().__init__(parent)
         self.setAttribute(Qt.WA_QuitOnClose, False)
         self.setWindowTitle(_t("arm_item_details_title"))
-        self.setMinimumSize(560, 340)
+        # Small floor only (icon + name + a line or two of info still needs
+        # to fit) -- real sizing now comes from adjustSize() below, so a
+        # simple item (Wings, materials, ...) actually gets a small window
+        # instead of always this same footprint (User-Wunsch, 2026-09-05:
+        # "nicht immer gleich Große Vorschau Fenster für alle Items bauen,
+        # sondern an das Item anpassen").
+        self.setMinimumSize(360, 160)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -2277,10 +2373,28 @@ class ItemDetailDialog(QDialog):
         layout.addWidget(self.detail_widget)
 
         icon_cache.icon_ready.connect(self.detail_widget.on_icon_ready)
+        # Real bug found + fixed (User-reported, 2026-09-05, screenshot: a
+        # freshly-opened item's Main Stats/enchant slider appeared clipped)
+        # -- this dialog only ever auto-sized itself ONCE, at show() time,
+        # to whatever content existed then. For an item whose detail wasn't
+        # cached yet, that was just the "Loading details..." placeholder --
+        # by the time the real (often much larger) content arrived
+        # asynchronously via this same signal, the already-shown dialog
+        # never grew to fit it. Connected AFTER detail_widget's own handler
+        # so the content is already updated by the time this fires.
         detail_cache.detail_ready.connect(self.detail_widget.on_detail_ready)
+        detail_cache.detail_ready.connect(self._on_detail_ready)
 
-    def load_item(self, item_id: int, name: str, image_url: str):
-        self.detail_widget.load_item(item_id, name, image_url)
+    def load_item(self, item_id: int, name: str, image_url: str, description: str = ""):
+        self.detail_widget.load_item(item_id, name, image_url, catalog_description=description)
+        # Covers the already-cached case (on_detail_ready above never fires
+        # since load_item applies cached detail synchronously) -- the async
+        # case is covered by _on_detail_ready once the real content arrives.
+        self.adjustSize()
+
+    def _on_detail_ready(self, item_id: int):
+        if item_id == self.detail_widget._item_id:
+            self.adjustSize()
 
 
 
@@ -2311,6 +2425,23 @@ SLOT_LAYOUT = [
     ("Rune1", "arm_slot_rune", ["Rune"]),
     ("Rune2", "arm_slot_rune", ["Rune"]),
 ]
+
+# Wings (User-Wunsch, 2026-09-06: "Im EQ fehlt noch ein Wings Slot") -- same
+# "synthetic catalog entry, own categoryName" approach as Rune above, since
+# Wings aren't in the real shugo.gg catalog with usable stats either (see
+# _WINGS_EXTRA_ITEMS). Only one slot -- you wear one pair of wings, unlike
+# Rune's two.
+#
+# Held back out of THIS release (User-Wunsch, 2026-09-06: "für dieses
+# Update den Wingslot deaktivieren ... nach dem Update da weiter machen")
+# -- fully built and working (picker, stats, Stat Info/Build Compare
+# wiring, placeholder icon all verified), just not ready to ship publicly
+# yet. Flip this one flag back to True to re-enable everything below with
+# zero rework; see project_armory_pantheon_wings_backlog memory for the
+# follow-up note.
+_WINGS_SLOT_ENABLED = False
+if _WINGS_SLOT_ENABLED:
+    SLOT_LAYOUT.append(("Wings1", "arm_slot_wings", ["Wings Equip"]))
 
 SLOT_BUTTON_SIZE = 76
 
@@ -2353,6 +2484,16 @@ _LEFT_EQUIP_SECTIONS = [
     ("arm_section_weapon", ["MainHand", "SubHand"]),
     ("arm_section_armor", ["Helmet", "Shoulder", "Torso", "Gloves", "Pants", "Boots"]),
 ]
+if _WINGS_SLOT_ENABLED:
+    # Own section (User-Wunsch, 2026-09-06: "über den Slot 'Wings' als
+    # Titel schreiben, wie bei Armor und Schmuck") -- a real bug fix, not
+    # just styling: was first added into the RIGHT column's Accessory
+    # section, which actually put it bottom-RIGHT despite landing at
+    # column 0 of ITS OWN sub-grid -- "left/right" here means which
+    # column of the whole paperdoll a section's title block sits in, not
+    # position within that section. A standalone LEFT section is what
+    # actually lands it bottom-left, right under Armor.
+    _LEFT_EQUIP_SECTIONS.append(("arm_section_wings", ["Wings1"]))
 # Brooch doesn't exist yet at global release — excluded from the active
 # slot set for now (still defined in SLOT_LAYOUT above for whenever it's
 # added back). Bracelet's global-launch status is unconfirmed — left in.
@@ -3718,6 +3859,151 @@ def _load_pantheon_items() -> dict[str, dict[str, float]]:
             pass
     _pantheon_items_cache = result
     return result
+
+
+# Wings (User-Wunsch, 2026-09-06: "Im EQ fehlt noch ein Wings Slot") -- same
+# story as Pantheon above: shugo.gg's own catalog/detail API carries no
+# usable stats for these (confirmed empty mainStats for every real Wings
+# item), so the only real stat data comes from questlog.gg's separate
+# getWings API (see fetch_wings_items.py / project_armory_pantheon_wings_
+# backlog memory). Treated as a FIXED, un-upgradeable slot filler (like
+# Pantheon) rather than Rune's level-scaled-formula approach: whether
+# Wings can even be enhanced on the Global server yet is unconfirmed (same
+# KR-ahead-of-Global lag risk as the Daevanion Board's two data variants),
+# so only level-0 stats are used here and no enchant control is shown at
+# all for this slot -- see that memory's 2026-09-06 decision.
+WINGS_DATA_PATH = _BUNDLE_DIR / "data" / "wings_items.json"
+_wings_items_cache: dict[str, dict[str, float]] | None = None
+
+# Raw questlog.gg stat keys (all lowercase, no separators) -> this app's
+# own canonical Stat Info id. Deliberately its OWN dict rather than
+# extending _DAEVANION_STAT_ID_MAP -- that one is keyed by the Daevanion
+# board's own canonicalization convention, and coupling two unrelated
+# features to one shared mapping risks a future edit to one silently
+# breaking the other. Covers every raw key confirmed against a real Stat
+# Info row; `weapondamage`, `shockpropertyaccuracy` and
+# `shockpropertyresist` are deliberately left unmapped -- no confirmed
+# target, not guessed (see the 2026-09-04 Wings research in
+# project_armory_pantheon_wings_backlog memory).
+_WINGS_STAT_ID_MAP = {
+    "fpmax": "FPMax",
+    "hardhit": "HardHit",
+    "defensepierce": "DefensePierce",
+    "hpregen": "HPRegen",
+    "mpregen": "MPRegen",
+    "mpusedecrease": "MPCostReduction",
+    "amplifyfrontattack": "AmplifyFrontAttack",
+    "amplifyhphealget": "AmplifyHpHealGet",
+    "backattackdamage": "BackAttack",
+    "backattackcriticalresist": "BackAttackCriticalHitResist",
+    "frontattackdefense": "FrontDefense",
+    "decreasedamage": "DamageTolerance",
+    "amplifyweapondamage": "AmplifyWeaponDamage",
+}
+
+
+def _wings_icon_url(raw_icon: str) -> str:
+    """questlog's own `icon` field is a dotted resource path (e.g.
+    ".../Icon_WingA_003.Icon_WingA_003") -- the part after the last dot is
+    the real CDN texture name, verified against the same
+    assets.playnccdn.com pattern _RUNE_EXTRA_ITEMS already hardcodes for
+    its 2 icons (HTTP 200 confirmed for multiple Wings examples too)."""
+    texture_name = (raw_icon or "").rsplit(".", 1)[-1]
+    return f"https://assets.playnccdn.com/static-aion2-gamedata/resources/{texture_name}.png"
+
+
+def _load_wings_items() -> dict[str, dict[str, float]]:
+    """{item_id_str: {stat_id: value}} using each Wings item's LEVEL 0
+    stats only (see module comment above for why) with raw keys translated
+    through _WINGS_STAT_ID_MAP -- unmapped raw keys are silently dropped,
+    not guessed."""
+    global _wings_items_cache
+    if _wings_items_cache is not None:
+        return _wings_items_cache
+    result: dict[str, dict[str, float]] = {}
+    if WINGS_DATA_PATH.exists():
+        try:
+            for entry in json.loads(WINGS_DATA_PATH.read_text(encoding="utf-8")):
+                level_zero = next((lv for lv in entry.get("levels") or [] if lv.get("level") == 0), None)
+                if not level_zero:
+                    continue
+                stats = {}
+                for raw_key, value in (level_zero.get("stats") or {}).items():
+                    stat_id = _WINGS_STAT_ID_MAP.get(raw_key)
+                    if stat_id:
+                        stats[stat_id] = stats.get(stat_id, 0) + value
+                if stats:
+                    result[str(entry["id"])] = stats
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+    _wings_items_cache = result
+    return result
+
+
+def _build_wings_extra_items() -> list[dict]:
+    """Synthetic catalog entries for the Wings1 slot's item picker -- same
+    "not in the real shugo.gg catalog, so invent a minimal listing" idea as
+    _RUNE_EXTRA_ITEMS, scaled up to all 134 real Wings (67 named x Elyos/
+    Asmodian). categoryName "Wings Equip" is deliberately its OWN value,
+    distinct from the real "Wings"/"Wings Unlocking Item" catalog values --
+    keeps this slot's picker from ever mixing with the unlock-item catalog
+    browsing the main Item Database already has, same isolation Rune's own
+    "Rune" categoryName gets (absent from _ITEM_TOP_CATEGORIES entirely).
+
+    grade intentionally left blank: questlog's numeric grade codes (11/21/
+    31/41/71) have no confirmed mapping to this app's Common/Rare/Legend/
+    Unique/Epic strings (grade 71 alone is known to be a mixed cosmetic-
+    skin bucket, not a clean power tier -- see project_armory_pantheon_
+    wings_backlog memory), so no rarity color is guessed here.
+
+    "options" carries each item's own level-0 stats as plain "Stat: Value"
+    strings -- real bug found + fixed here (2026-09-06): _gear_type()
+    (the PvP/PvE/Neutral picker filter) reads exactly this field, and
+    treats a MISSING/empty "options" list as "not gear at all" (returns
+    "" instead of "Neutral"), which silently failed every one of the
+    PvP/PvE/Neutral filter's checks and made the picker show 0 of its own
+    134 items no matter what. None of these strings mention "PvP"/"PvE",
+    so every Wings item correctly classifies as "Neutral" gear."""
+    items = []
+    wings_stats = _load_wings_items()
+    try:
+        raw_entries = json.loads(WINGS_DATA_PATH.read_text(encoding="utf-8")) if WINGS_DATA_PATH.exists() else []
+    except (OSError, json.JSONDecodeError):
+        raw_entries = []
+    for entry in raw_entries:
+        item_id = entry.get("id")
+        if not item_id:
+            continue
+        stats = wings_stats.get(str(item_id), {})
+        options = [f"{stat_id}: {_format_number(value)}" for stat_id, value in stats.items()] or ["Wings"]
+        items.append({
+            "id": int(item_id),
+            "name": entry.get("name", "Wings"),
+            "image": _wings_icon_url(entry.get("icon", "")),
+            "grade": "",
+            "options": options,
+            "favorite": False, "tradable": False, "categoryName": "Wings Equip",
+        })
+    return items
+
+
+_WINGS_EXTRA_ITEMS = _build_wings_extra_items()
+
+# Real representative item icon per synthetic slot, shown faded while that
+# slot is empty (User-Wunsch, 2026-09-06: "wie beim Gear ein passendes Icon
+# hinterlegen, sodass man direkt sieht, was dort reinkommt") -- the 14 core
+# gear slots have ready-made third-party placeholder art (see
+# _EQUIPMENT_SLOT_PLACEHOLDER), but that asset pack had nothing for Rune/
+# Wings, so this reuses a real item's own icon at a muted style instead,
+# same idea _faded_pixmap already established for Pantheon's empty board
+# slots. Rune1/Rune2 use their own PvE/PvP item so each slot's icon
+# actually hints at which one goes there. Wings1 got its own real
+# placeholder art shortly after (a user-supplied wing silhouette, added to
+# _EQUIPMENT_SLOT_PLACEHOLDER instead), so it's not listed here anymore.
+_SYNTHETIC_SLOT_PLACEHOLDER_ITEM = {
+    "Rune1": _RUNE_EXTRA_ITEMS[0],
+    "Rune2": _RUNE_EXTRA_ITEMS[1],
+}
 
 
 def _load_shop_items() -> dict[str, list[int]]:
@@ -14636,6 +14922,12 @@ class LoadoutWindow(QMainWindow):
         outer.addStretch(1)
 
         self._equip_priority_items: dict[str, list[dict | None]] = {}
+        # Current index per section's chain -- only meaningful to the
+        # in-game overlay's Gear Priority section (User-Wunsch, 2026-09-05:
+        # show just the current/first-not-yet-acquired item per chain,
+        # advancing when checked off there). This page itself always shows
+        # the full editable chain regardless of progress.
+        self._equip_priority_progress: dict[str, int] = {}
         self.equip_priority_rows: dict[str, QHBoxLayout] = {}
 
         columns = 3
@@ -15384,6 +15676,25 @@ class LoadoutWindow(QMainWindow):
         totals = self._pantheon_lord_totals()
         for lord_key, label in self._pantheon_lord_value_labels.items():
             label.setText(_format_number(totals.get(lord_key, 0)))
+
+    def _wings_stat_totals(self) -> dict[str, float]:
+        """Wings1's level-0 stats for the LIVE/active build -- see
+        _wings_stat_totals_for for the arbitrary-state variant Build
+        Compare needs (Wings1 is a normal per-Equip-Build slot, unlike
+        Pantheon's account-wide state, so it can't just read self._equipped
+        unconditionally the way _pantheon_lord_totals does)."""
+        return self._wings_stat_totals_for(self._equipped)
+
+    def _wings_stat_totals_for(self, equipped: dict) -> dict[str, float]:
+        """Wings1's level-0 stats (see _load_wings_items) out of an
+        ARBITRARY equipped dict -- only ever one slot to look up, unlike
+        Pantheon's multi-slot sum. Wired into _refresh_stat_info's totals
+        merge AND _compute_full_build_totals (Build Compare) (User-Wunsch,
+        2026-09-06)."""
+        item = equipped.get("Wings1")
+        if not item:
+            return {}
+        return dict(_load_wings_items().get(str(item.get("id") or ""), {}))
 
     def _build_genius_insight_tab(self) -> QWidget:
         """Plans the Pet Genus system's 5 boards (Cogni/Fera/Natura/Varian/
@@ -16798,6 +17109,8 @@ class LoadoutWindow(QMainWindow):
             icon_btn.setToolTip(_t("arm_slot_empty_tooltip", label=label))
             placeholder = _EQUIPMENT_SLOT_PLACEHOLDER.get(slot_id)
             icon = _placeholder_icon("equipment", placeholder) if placeholder else None
+            if icon is None:
+                icon = self._slot_synthetic_placeholder_icon(slot_id, icon_btn.iconSize().width())
             icon_btn.setIcon(icon or QIcon())
         self._update_slot_enchant_label(slot_id)
 
@@ -17181,6 +17494,7 @@ class LoadoutWindow(QMainWindow):
         # Board wasn't contributing anything at all).
         daevanion_totals = self._daevanion_stat_totals()
         passive_totals = self._passive_skill_stat_totals()
+        wings_totals = self._wings_stat_totals()
 
         totals: dict[str, float] = dict(equipment_totals)
         for stat_id, value in genius_totals.items():
@@ -17192,6 +17506,8 @@ class LoadoutWindow(QMainWindow):
         for stat_id, value in daevanion_totals.items():
             totals[stat_id] = totals.get(stat_id, 0.0) + value
         for stat_id, value in passive_totals.items():
+            totals[stat_id] = totals.get(stat_id, 0.0) + value
+        for stat_id, value in wings_totals.items():
             totals[stat_id] = totals.get(stat_id, 0.0) + value
 
         label_groups = [
@@ -17472,10 +17788,11 @@ class LoadoutWindow(QMainWindow):
                 icon_btn.setCursor(Qt.PointingHandCursor)
                 icon_btn.clicked.connect(lambda _c=False, s=slot_id: self._select_equip_slot(s))
                 placeholder = _EQUIPMENT_SLOT_PLACEHOLDER.get(slot_id)
-                if placeholder:
-                    icon = _placeholder_icon("equipment", placeholder)
-                    if icon:
-                        icon_btn.setIcon(icon)
+                icon = _placeholder_icon("equipment", placeholder) if placeholder else None
+                if icon is None:
+                    icon = self._slot_synthetic_placeholder_icon(slot_id, 48)
+                if icon:
+                    icon_btn.setIcon(icon)
                 self._slot_icon_buttons[slot_id] = icon_btn
 
                 # Replaces the old per-slot "change item" button: clicking
@@ -17701,7 +18018,10 @@ class LoadoutWindow(QMainWindow):
     # to disk. ────────────────────────────────────────────────────────────
 
     def _empty_equip_build_state(self) -> dict:
-        return {"equipped": {}, "substats": {}, "enchant": {}, "philosopher_stone": {}}
+        return {
+            "equipped": {}, "substats": {}, "enchant": {}, "philosopher_stone": {},
+            "priority": {}, "priority_progress": {},
+        }
 
     def _ensure_class_equip_builds(self, class_name: str):
         if class_name not in self._equip_builds_data:
@@ -17724,6 +18044,11 @@ class LoadoutWindow(QMainWindow):
             "substats": {k: set(v) for k, v in self._equipped_substats.items()},
             "enchant": dict(self._equipped_enchant),
             "philosopher_stone": dict(self._equipped_philosopher_stone),
+            # Gear Priority chains + per-chain progress (User-Wunsch,
+            # 2026-09-05) -- previously session-only, same gap the Skill
+            # Priority list had until 2026-08-27 (see _save_current_build_state).
+            "priority": {k: list(v) for k, v in self._equip_priority_items.items()},
+            "priority_progress": dict(self._equip_priority_progress),
             "linked_skill_build": existing.get("linked_skill_build"),
             "linked_genius_build": existing.get("linked_genius_build"),
         }
@@ -17878,6 +18203,15 @@ class LoadoutWindow(QMainWindow):
         # builds saved after this feature was added (User-Wunsch,
         # 2026-08-27), an older/missing key just means none were active.
         self._equipped_philosopher_stone = dict(state.get("philosopher_stone", {}))
+        saved_priority = state.get("priority") or {}
+        self._equip_priority_items = {
+            sk: (list(saved_priority[sk]) if saved_priority.get(sk) else [None])
+            for sk, _label, _categories in _EQUIP_PRIORITY_SECTIONS
+        }
+        self._equip_priority_progress = dict(state.get("priority_progress", {}))
+        if hasattr(self, "equip_priority_rows"):
+            for sk, _label, _categories in _EQUIP_PRIORITY_SECTIONS:
+                self._rebuild_equip_priority_row(sk)
         self._selected_equip_slot_id = None
 
         # Same setUpdatesEnabled guard as the Quick Select bulk-equip path
@@ -17896,6 +18230,19 @@ class LoadoutWindow(QMainWindow):
         finally:
             self.setUpdatesEnabled(True)
         self.update()
+
+    def advance_equip_priority(self, section_key: str):
+        """Checks off the current (first not-yet-acquired) item in a Gear
+        Priority chain, revealing the next one -- called from the in-game
+        overlay's Gear Priority section (User-Wunsch, 2026-09-05: a
+        progressive per-slot-chain reveal, unlike the flat always-visible
+        Skill Priority list). This page's own chain editor is unaffected --
+        it always shows the full chain for planning regardless of progress."""
+        chain = self._equip_priority_items.get(section_key, [])
+        progress = self._equip_priority_progress.get(section_key, 0)
+        if progress < len(chain):
+            self._equip_priority_progress[section_key] = progress + 1
+        self._save_current_equip_build_state(self.character_class_combo.currentText().strip().lower())
 
     # ── Profile persistence (User-Wunsch, 2026-08-25: "die Informationen
     # vom Buildplanner im Profil gespeichert werden") -- first step, scoped
@@ -17957,6 +18304,14 @@ class LoadoutWindow(QMainWindow):
                         "substats": {k: list(v) for k, v in build["substats"].items()},
                         "enchant": build["enchant"],
                         "philosopher_stone": build.get("philosopher_stone", {}),
+                        # Gear Priority chains + per-chain progress
+                        # (User-Wunsch, 2026-09-05) -- same explicit-key
+                        # serialization as the rest of this dict, so a new
+                        # key added to _save_current_equip_build_state's
+                        # output needs a matching line here too, or it's
+                        # silently dropped on the next save/load round-trip.
+                        "priority": {k: list(v) for k, v in build.get("priority", {}).items()},
+                        "priority_progress": dict(build.get("priority_progress", {})),
                         # Which Skill/Arcana build AND which Genius profile
                         # count toward THIS Equip Build's Stat Info/damage
                         # estimate (User-Wunsch, 2026-08-30, see
@@ -18020,6 +18375,8 @@ class LoadoutWindow(QMainWindow):
                     "substats": {k: set(v) for k, v in build.get("substats", {}).items()},
                     "enchant": build.get("enchant", {}),
                     "philosopher_stone": build.get("philosopher_stone", {}),
+                    "priority": {k: list(v) for k, v in build.get("priority", {}).items()},
+                    "priority_progress": dict(build.get("priority_progress", {})),
                     "linked_skill_build": build.get("linked_skill_build"),
                     "linked_genius_build": build.get("linked_genius_build"),
                 }
@@ -18196,6 +18553,24 @@ class LoadoutWindow(QMainWindow):
         self._refresh_stigma_points_label()
         self._refresh_arcana_calculator_button()
 
+    def _slot_synthetic_placeholder_icon(self, slot_id: str, size: int) -> QIcon | None:
+        """Faded real item icon for an empty Rune/Wings slot -- see
+        _SYNTHETIC_SLOT_PLACEHOLDER_ITEM's own comment for why (no
+        third-party placeholder art exists for these). Returns None (not
+        yet cached, a request was fired) exactly like IconCache.pixmap's
+        own miss convention, so callers already know to fall back to a
+        blank QIcon() for now -- _on_icon_ready re-applies it once
+        available."""
+        rep = _SYNTHETIC_SLOT_PLACEHOLDER_ITEM.get(slot_id)
+        if not rep:
+            return None
+        image_url = rep.get("image") or ""
+        pix = self.icon_cache.pixmap(image_url, size, grade=rep.get("grade") or "")
+        if pix:
+            return QIcon(_faded_pixmap(pix))
+        self.icon_cache.request(image_url)
+        return None
+
     def _refresh_all_equip_slot_icons(self):
         """Re-applies every slot button's icon/tooltip from self._equipped —
         needed after switching Sets, since icons are otherwise only ever set
@@ -18207,6 +18582,8 @@ class LoadoutWindow(QMainWindow):
                 icon_btn.setToolTip(_t("arm_slot_empty_tooltip", label=label))
                 placeholder = _EQUIPMENT_SLOT_PLACEHOLDER.get(slot_id)
                 icon = _placeholder_icon("equipment", placeholder) if placeholder else None
+                if icon is None:
+                    icon = self._slot_synthetic_placeholder_icon(slot_id, icon_btn.iconSize().width())
                 icon_btn.setIcon(icon or QIcon())
                 self._update_slot_enchant_label(slot_id)
                 continue
@@ -18718,6 +19095,8 @@ class LoadoutWindow(QMainWindow):
         for stat_id, value in self._arcana_lord_stat_totals(totals).items():
             totals[stat_id] = totals.get(stat_id, 0.0) + value
         for stat_id, value in daevanion_totals.items():
+            totals[stat_id] = totals.get(stat_id, 0.0) + value
+        for stat_id, value in self._wings_stat_totals_for(equipped).items():
             totals[stat_id] = totals.get(stat_id, 0.0) + value
 
         class_key = _skills_data_class_key(class_name)
@@ -19304,6 +19683,15 @@ class LoadoutWindow(QMainWindow):
             pix = self.icon_cache.pixmap(url, 32, grade=current_item.get("grade"))
             if pix:
                 self.equip_item_icon_label.setPixmap(pix)
+        # Empty Rune/Wings slots' faded placeholder icon requests this same
+        # signal to land on (see _slot_synthetic_placeholder_icon) -- the
+        # loop above only ever matches EQUIPPED slots, so an empty slot
+        # waiting on its representative icon needs its own check here.
+        for slot_id, rep in _SYNTHETIC_SLOT_PLACEHOLDER_ITEM.items():
+            if slot_id not in self._equipped and rep and rep.get("image") == url:
+                icon = self._slot_synthetic_placeholder_icon(slot_id, 48)
+                if icon:
+                    self._slot_icon_buttons[slot_id].setIcon(icon)
 
     def _on_detail_ready(self, item_id: int):
         if any(item.get("id") == item_id for item in self._equipped.values()):
@@ -19352,9 +19740,9 @@ class ItemFilterProxyModel(QSortFilterProxyModel):
         self.grade_filter = "All"
         # Shop filter (User-Wunsch, 2026-08-29: "Class Auswahl brauchen wir
         # da nicht mehr") replaces the old Class dropdown/filter entirely --
-        # classNames are still shown as their own table column, just no
-        # longer filterable here. shop_items maps shop name -> item id set
-        # (see compute_shop_items.py/REAL_SHOP_TYPES).
+        # classNames data is no longer shown at all (its own table column
+        # was removed too, 2026-09-05). shop_items maps shop name -> item id
+        # set (see compute_shop_items.py/REAL_SHOP_TYPES).
         self.shop_filter = "All"
         self.shop_items: dict[str, set[int]] = {k: set(v) for k, v in _load_shop_items().items()}
         self.gear_type_filter: set[str] = set()
@@ -19490,6 +19878,20 @@ class _ComboPopupFilter(QObject):
 
 
 class ItemDatabaseWindow(QMainWindow):
+    # Emitted with (item_id, name) (User-Wunsch, 2026-09-05: a right-click
+    # "Add to Templates" entry -- renamed from an earlier "Add to Shopping
+    # List" idea once the user settled on adding a reusable Task/Shopping
+    # Template instead of a live list entry, matching the existing "Import
+    # from Database" flow's own shape). item_id lets the host app look up
+    # real Location/Price data to pre-fill (User-Wunsch: "die Location,
+    # falls vorhanden mit übernommen werden und Preis falls vorhanden").
+    # This window has no reference back to the host app's MainWindow (it's
+    # a standalone, dynamically-loaded module, see MainWindow.
+    # _ensure_item_database_window), so creating the actual template
+    # happens on the host side; this window's own job ends at "here's what
+    # the user picked."
+    add_to_templates_requested = Signal(int, str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_QuitOnClose, False)
@@ -19738,7 +20140,7 @@ class ItemDatabaseWindow(QMainWindow):
         self.model = QStandardItemModel(0, len(COLUMNS), self)
         self.model.setHorizontalHeaderLabels([
             _t("arm_col_icon"), _t("arm_col_id"), _t("arm_col_name"), _t("arm_grade_label"),
-            _t("arm_col_category"), _t("arm_col_classes"), _t("arm_col_tradable"), _t("arm_col_pvp_pve"),
+            _t("arm_col_category"), _t("arm_col_tradable"), _t("arm_col_pvp_pve"),
             _t("arm_col_lord_values"),
         ])
 
@@ -19755,10 +20157,38 @@ class ItemDatabaseWindow(QMainWindow):
         self.detail_cache = ItemDetailCache(DETAIL_CACHE_DIR, self)
         self.detail_cache.detail_ready.connect(self._on_detail_ready)
         self._pending_tooltip_id: int | None = None
+        # Wings1's synthetic catalog items use questlog.gg ids shugo.gg's
+        # detail API has never heard of -- a real network request for one
+        # would just silently never resolve (unlike Rune's ids, which DO
+        # exist in shugo's catalog, just with real mainStats; or Pantheon's,
+        # which exist there too, just empty). Pre-seeding the in-memory
+        # cache directly (same mechanism Rune's 2 items get via a
+        # hand-authored details/*.json file on disk, scaled to 134 items
+        # via code instead of 134 hand-written files) makes
+        # ItemDetailCache.request() a no-op for these ids and
+        # ItemDetailCache.get() return this synthetic detail immediately,
+        # so _apply_detail() runs the same as any other item.
+        for _wings_item in _WINGS_EXTRA_ITEMS:
+            self.detail_cache._memory[_wings_item["id"]] = {
+                "id": _wings_item["id"],
+                "name": _wings_item["name"],
+                "categoryName": "Wings Equip",
+                "gradeName": "",
+                "grade": "",
+                "tradable": False,
+                "enchantable": False,
+                "mainStats": [],
+                "subStats": [],
+                "subStatCount": 0,
+                "subSkillCountMax": 0,
+                "sources": [],
+            }
 
         self.table.verticalScrollBar().valueChanged.connect(self._request_visible_icons)
         self.proxy.layoutChanged.connect(self._request_visible_icons)
         self.table.doubleClicked.connect(self._open_detail_popup)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_item_context_menu)
 
         self._raw_items: list[dict] = []
         self._loadout_window: LoadoutWindow | None = None
@@ -19785,21 +20215,56 @@ class ItemDatabaseWindow(QMainWindow):
             return
         item_id = id_item.data(Qt.EditRole)
         image_url = icon_item.data(Qt.UserRole) if icon_item else ""
+        description = id_item.data(WING_DESCRIPTION_ROLE) or ""
 
         dialog = ItemDetailDialog(self.icon_cache, self.detail_cache, self)
-        dialog.load_item(item_id, name_item.text(), image_url)
+        dialog.load_item(item_id, name_item.text(), image_url, description=description)
         dialog.show()
 
-    def open_loadout_window(self):
-        """Public entry point so a host app can jump straight to the Build
-        Planner (the loadout/equip window) without showing the full item
-        table first — this window's already-loaded item data and caches
-        back the Build Planner either way.
+    def _show_item_context_menu(self, pos):
+        """Right-click menu on the item table (User-Wunsch, 2026-09-05:
+        "können wir ein Kontext Menü für die Item Database bauen? ...
+        unter anderem den Punkt 'Zur Shoppinglist hinzufügen'")."""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+        source_index = self.proxy.mapToSource(index)
+        name_item = self.model.item(source_index.row(), NAME_COLUMN)
+        id_item = self.model.item(source_index.row(), ID_COLUMN)
+        if name_item is None or id_item is None:
+            return
+        name = name_item.text()
+        item_id = id_item.data(Qt.EditRole)
 
-        Opens straight into the Build Planner now — no CreateCharacterDialog
-        gate ('Create Build'/'Create Character') beforehand; name/class/race
-        can be set any time via the class combo in Skill Planner or the
-        gear-icon settings popup. Both dialogs remain defined but unused."""
+        menu = QMenu(self)
+        details_action = menu.addAction(_t("arm_ctx_show_details"))
+        copy_action = menu.addAction(_t("arm_ctx_copy_name"))
+        menu.addSeparator()
+        template_action = menu.addAction(_t("arm_ctx_add_to_templates"))
+
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen == details_action:
+            self._open_detail_popup(index)
+        elif chosen == copy_action:
+            QApplication.clipboard().setText(name)
+        elif chosen == template_action:
+            # Host app (MainWindow) owns the actual Task-vs-Shopping choice
+            # + template-edit dialog + save -- see
+            # MainWindow._add_item_database_item_to_templates. No status
+            # message fired here: that flow can still be cancelled by the
+            # user, so "added" isn't true yet at emit time.
+            self.add_to_templates_requested.emit(item_id, name)
+
+    def ensure_loadout_window(self) -> "LoadoutWindow":
+        """Creates the Build Planner window if it doesn't exist yet, WITHOUT
+        showing it. Split out of open_loadout_window() (User-Wunsch,
+        2026-09-05) so the overlay's Skill/Gear Priority sections can read
+        real data through this same window even when the user never
+        actually opened the Build Planner tab this session -- toggling one
+        of those sections on in the overlay's gear-icon popup is itself an
+        explicit request for this data, so paying the one-time load here is
+        the right tradeoff over duplicating the Build Planner's own
+        skill-id/item lookups in MainWindow."""
         if self._loadout_window is None:
             # No Qt parent on purpose: an owned top-level window on Windows
             # shares the owner's taskbar entry, and closing it can leave the
@@ -19813,6 +20278,27 @@ class ItemDatabaseWindow(QMainWindow):
             self._loadout_window.set_theme(self._theme)
             if self._pending_loadout_state:
                 self._loadout_window.apply_persisted_state(self._pending_loadout_state)
+        return self._loadout_window
+
+    def get_loadout_window_if_open(self) -> "LoadoutWindow | None":
+        """The live Build Planner window, or None if it hasn't been created
+        this session (via open_loadout_window()/ensure_loadout_window()) --
+        lets the host app (MainWindow) check whether it should route a
+        change through the live window (so its own UI stays in sync) or
+        fall back to editing the persisted state dict directly."""
+        return self._loadout_window
+
+    def open_loadout_window(self):
+        """Public entry point so a host app can jump straight to the Build
+        Planner (the loadout/equip window) without showing the full item
+        table first — this window's already-loaded item data and caches
+        back the Build Planner either way.
+
+        Opens straight into the Build Planner now — no CreateCharacterDialog
+        gate ('Create Build'/'Create Character') beforehand; name/class/race
+        can be set any time via the class combo in Skill Planner or the
+        gear-icon settings popup. Both dialogs remain defined but unused."""
+        self.ensure_loadout_window()
         self._loadout_window.show()
         self._loadout_window.raise_()
         self._loadout_window.activateWindow()
@@ -20140,6 +20626,16 @@ class ItemDatabaseWindow(QMainWindow):
         # to the same empty tuple), no separate fix needed for Wings
         # specifically.
         items = _dedupe_bound_unbound(data.get("items", []))
+        # _WINGS_EXTRA_ITEMS is appended HERE, after dedup, not inside
+        # _dedupe_bound_unbound alongside _RUNE_EXTRA_ITEMS -- that
+        # function's (name, grade, options) dedup key would silently
+        # collapse each Wings item's two race variants into one (same
+        # name, both grade="" with no "options" field, differing only by
+        # id/icon), exactly the duplicate-collapsing behavior the comment
+        # above relies on for the REAL "Wings Unlocking Item" catalog rows.
+        # Wings Equip's own categoryName keeps it out of that codepath
+        # entirely by staying outside the dedup pass.
+        items = items + _WINGS_EXTRA_ITEMS
         # No classNames normalization needed here anymore -- the catalog's
         # own "Spiritmaster" is now the app-wide display name too (matches
         # shugo.gg's own item database, see _SKILLS_DATA_CLASS_ALIASES).
@@ -20188,6 +20684,8 @@ class ItemDatabaseWindow(QMainWindow):
             if owned_stats:
                 id_item.setData(owned_stats, WING_OWNED_STATS_ROLE)
                 wing_owned_names |= owned_stats
+            if item.get("description"):
+                id_item.setData(item["description"], WING_DESCRIPTION_ROLE)
             pantheon_stats = _load_pantheon_items().get(str(item.get("id") or ""), {})
             if pantheon_stats:
                 id_item.setData(set(pantheon_stats.keys()), PANTHEON_STATS_ROLE)
@@ -20210,9 +20708,6 @@ class ItemDatabaseWindow(QMainWindow):
             row.append(QStandardItem(category))
             if category:
                 categories.add(category)
-
-            class_names = item.get("classNames") or []
-            row.append(QStandardItem(", ".join(class_names)))
 
             row.append(QStandardItem("Yes" if item.get("tradable") else "No"))
 
