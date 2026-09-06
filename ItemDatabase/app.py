@@ -3526,7 +3526,18 @@ class ItemPickerPopup(QWidget):
         self.table_widget.verticalHeader().setDefaultSectionSize(34)
         self.table_widget.cellClicked.connect(self._choose_row)
         self.table_widget.verticalScrollBar().valueChanged.connect(self._request_visible_icons)
-        self.table_widget.setVisible(False)
+        # Real bug found + fixed (User-reported, 2026-09-06, screenshot: the
+        # Wings picker opened already in Row view per its own default, but
+        # the results area was blank) -- this used to unconditionally hide
+        # table_widget and leave list_widget's own default visibility (True)
+        # untouched, which only matched the non-Wings block-view default.
+        # Wings defaults to _view_mode="row" at construction (see above) but
+        # nothing ever synced these two widgets' visibility to that until an
+        # actual button click fired _on_view_mode_changed -- so _refresh_list
+        # correctly filled table_widget, but the still-visible (and never
+        # populated) list_widget was what actually showed.
+        self.list_widget.setVisible(self._view_mode == "block")
+        self.table_widget.setVisible(self._view_mode == "row")
         layout.addWidget(self.table_widget, 1)
 
         self._refresh_list()
