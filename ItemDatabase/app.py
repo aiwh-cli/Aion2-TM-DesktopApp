@@ -2014,15 +2014,28 @@ class ItemDetailWidget(QWidget):
         elif category_name == "Wings Equip":
             # Wings1 slot items (User-Wunsch, 2026-09-06) -- same "fixed,
             # un-upgradeable slot filler" framing as the Pantheon branch
-            # above: no enchant level, real stats come from questlog.gg's
-            # data via _load_wings_items (level 0 only, see that
-            # function's own docstring for why).
-            wings_stats = _load_wings_items().get(str(self._detail.get("id") or ""), {})
-            if wings_stats:
-                lines.append("<b>Wings Stats</b>")
-                for stat_id, value in wings_stats.items():
-                    lines.append(f"{stat_id}: {_format_number(value)}")
-            else:
+            # above: no enchant level. Shown as the real in-game Equip/
+            # Owned Effect split (User-Wunsch: "Equipped und owned effekt
+            # prüfen") -- Owned Effect is questlog.gg's real, canonical-id
+            # data (level 0 only, see _load_wings_items, already fed into
+            # Stat Info); Equip Effect is shugo.gg's real free-text data
+            # where a cross-referenced match exists (see
+            # _load_wings_equip_effect_lines -- display-only, not summed
+            # into Stat Info, since it isn't available/id-mapped for
+            # every item).
+            base_name = _strip_wings_race_suffix(self._detail.get("name") or "")
+            equip_lines = _load_wings_equip_effect_lines().get(base_name, [])
+            owned_stats = _load_wings_items().get(str(self._detail.get("id") or ""), {})
+            if equip_lines:
+                lines.append("<b>Equip Effect</b>")
+                lines.extend(equip_lines)
+            if owned_stats:
+                lines.append("<b>Owned Effect</b>")
+                for stat_id, value in owned_stats.items():
+                    label = _WINGS_STAT_DISPLAY.get(stat_id, stat_id)
+                    suffix = "%" if stat_id in _WINGS_STAT_IS_PERCENT else ""
+                    lines.append(f"{label}: {_format_number(value)}{suffix}")
+            if not equip_lines and not owned_stats:
                 lines.append("<i>No stat data available for this item.</i>")
 
         self.main_stats_label.setText("<br>".join(lines))
@@ -2111,7 +2124,12 @@ class ItemDetailWidget(QWidget):
 
         def make_substat_row(idx: int, text: str) -> QPushButton:
             row_btn = QPushButton()
-            row_btn.setObjectName("SubstatRow")
+            # Browse-only rows (User-Wunsch, 2026-09-06: "ca 50 oder 40%
+            # schmaler von der Höhe ... ohne die Detailansicht vom EQ
+            # Builder zu ändern") get their own slimmer QSS variant --
+            # #SubstatRow itself stays untouched for the Build Planner's
+            # equip panel (selectable=True).
+            row_btn.setObjectName("SubstatRow" if self._selectable else "SubstatRowCompact")
             if self._selectable:
                 row_btn.setCheckable(True)
                 row_btn.setChecked(idx in self._selected_substats)
@@ -2123,14 +2141,23 @@ class ItemDetailWidget(QWidget):
                 row_btn.setCursor(Qt.ArrowCursor)
 
             row_layout = QHBoxLayout(row_btn)
-            row_layout.setContentsMargins(8, 4, 8, 4)
+            row_layout.setContentsMargins(8, 4, 8, 4) if self._selectable else row_layout.setContentsMargins(8, 1, 8, 1)
             row_layout.setSpacing(8)
 
-            check_icon_label = QLabel()
-            check_icon_label.setFixedSize(16, 16)
-            check_icon_label.setPixmap(_make_check_icon(16))
-            check_icon_label.setVisible(self._selectable and idx in self._selected_substats)
-            row_layout.addWidget(check_icon_label)
+            if self._selectable:
+                # Never shown at all in browse mode (idx can't be
+                # "selected" there), so skip reserving its 16px in the
+                # layout entirely instead of just hiding it -- part of the
+                # same row-height reduction above.
+                check_icon_label = QLabel()
+                check_icon_label.setFixedSize(16, 16)
+                check_icon_label.setPixmap(_make_check_icon(16))
+                check_icon_label.setVisible(idx in self._selected_substats)
+                row_layout.addWidget(check_icon_label)
+            else:
+                check_icon_label = QLabel()
+                check_icon_label.setFixedSize(0, 0)
+                check_icon_label.setVisible(False)
 
             label = QLabel(text)
             label.setObjectName("DetailInfo")
@@ -2391,10 +2418,22 @@ class ItemDetailDialog(QDialog):
         # since load_item applies cached detail synchronously) -- the async
         # case is covered by _on_detail_ready once the real content arrives.
         self.adjustSize()
+        # Real bug found + fixed (User-reported, 2026-09-06, screenshot pair:
+        # a freshly-opened item's content looked clipped/incomplete until
+        # the user manually resized/moved the window): confirmed headlessly
+        # that this dialog's sizeHint() keeps growing for one more event-loop
+        # tick after load_item() returns even for already-cached items
+        # (word-wrapped QLabel heightForWidth isn't settled until Qt actually
+        # lays the widget out) -- the synchronous adjustSize() above captures
+        # a too-small intermediate size. Deferring one more adjustSize() to
+        # the next tick catches the settled size without dropping the
+        # immediate call (keeps the window from flashing tiny first).
+        QTimer.singleShot(0, self.adjustSize)
 
     def _on_detail_ready(self, item_id: int):
         if item_id == self.detail_widget._item_id:
             self.adjustSize()
+            QTimer.singleShot(0, self.adjustSize)
 
 
 
@@ -2432,14 +2471,11 @@ SLOT_LAYOUT = [
 # _WINGS_EXTRA_ITEMS). Only one slot -- you wear one pair of wings, unlike
 # Rune's two.
 #
-# Held back out of THIS release (User-Wunsch, 2026-09-06: "für dieses
-# Update den Wingslot deaktivieren ... nach dem Update da weiter machen")
-# -- fully built and working (picker, stats, Stat Info/Build Compare
-# wiring, placeholder icon all verified), just not ready to ship publicly
-# yet. Flip this one flag back to True to re-enable everything below with
-# zero rework; see project_armory_pantheon_wings_backlog memory for the
-# follow-up note.
-_WINGS_SLOT_ENABLED = False
+# Briefly held back out of v1.9.4 (User-Wunsch, 2026-09-06: "für dieses
+# Update den Wingslot deaktivieren"), then reactivated the same day once
+# the remaining rough edges (grade coloring, picker filter) were fixed --
+# see project_armory_pantheon_wings_backlog memory.
+_WINGS_SLOT_ENABLED = True
 if _WINGS_SLOT_ENABLED:
     SLOT_LAYOUT.append(("Wings1", "arm_slot_wings", ["Wings Equip"]))
 
@@ -3306,11 +3342,19 @@ class ItemPickerPopup(QWidget):
         self._priority_ids = priority_ids or set()
         self._show_favorites_only = False
         self._sort_key = "name"
+        # Wings1's picker only ever gets this one category (see
+        # SLOT_LAYOUT) -- used below to gate the Wings-only Equip Effect
+        # filter and the Row-view default, without touching every other
+        # slot's picker (User-Wunsch, 2026-09-06: scoped explicitly to
+        # Wings, not app-wide).
+        self._is_wings_picker = categories == ["Wings Equip"]
         # Block/Row view toggle (User-Wunsch, 2026-08-29: "Dann bitte
         # wieder Block ansicht und Row ansicht"), same pattern already
         # used by TemplateItemPickerDialog -- both views share this one
         # filtered+sorted item pool, only one is ever built at a time.
-        self._view_mode = "block"
+        # Wings defaults to Row (User-Wunsch, 2026-09-06: "den Filter
+        # müssen wir bei Row lassen statt Block ansicht").
+        self._view_mode = "row" if self._is_wings_picker else "block"
         # Rebuilt on every _refresh_list() call — maps an icon URL / item id
         # to the currently-visible row label(s) (with that row's own grade,
         # for the correct rarity texture) waiting on async icon/level data,
@@ -3353,17 +3397,49 @@ class ItemPickerPopup(QWidget):
         self.block_view_btn = QPushButton(_t("template_view_block"))
         self.block_view_btn.setObjectName("SkillFilterButton")
         self.block_view_btn.setCheckable(True)
-        self.block_view_btn.setChecked(True)
+        self.block_view_btn.setChecked(not self._is_wings_picker)
         self.block_view_btn.clicked.connect(lambda _c=False: self._on_view_mode_changed("block"))
         self.row_view_btn = QPushButton(_t("template_view_row"))
         self.row_view_btn.setObjectName("SkillFilterButton")
         self.row_view_btn.setCheckable(True)
+        self.row_view_btn.setChecked(self._is_wings_picker)
         self.row_view_btn.clicked.connect(lambda _c=False: self._on_view_mode_changed("row"))
         view_group.addButton(self.block_view_btn)
         view_group.addButton(self.row_view_btn)
         filter_row.addWidget(self.block_view_btn)
         filter_row.addWidget(self.row_view_btn)
         layout.addLayout(filter_row)
+
+        # Equip Effect filter (User-Wunsch, 2026-09-06: "einen Dropdown
+        # Filter für Equipped Effekt") -- Wings-only, populated from real
+        # shugo.gg-cross-referenced stat names (see
+        # _load_wings_equip_effect_lines; items with no cross-reference
+        # match just never show under any specific stat, same "no data,
+        # not guessed" policy as everywhere else in this Wings feature).
+        self.wings_equip_effect_combo = None
+        if self._is_wings_picker:
+            equip_effect_row = QHBoxLayout()
+            effect_label = QLabel(_t("arm_filter_equip_effect"))
+            effect_label.setObjectName("EquipSectionLabel")
+            equip_effect_row.addWidget(effect_label)
+            self.wings_equip_effect_combo = QComboBox()
+            # User-reported, 2026-09-06 (screenshot: ~42 entries spilling
+            # off the bottom of the screen) -- caps the open popup to 9
+            # rows with a scrollbar instead of stretching to fit every
+            # entry at once.
+            self.wings_equip_effect_combo.setMaxVisibleItems(9)
+            self.wings_equip_effect_combo.addItem("All")
+            stat_names = set()
+            for lines in _load_wings_equip_effect_lines().values():
+                for line in lines:
+                    stat_name = line.rpartition(":")[0].strip()
+                    if stat_name:
+                        stat_names.add(stat_name)
+            for stat_name in sorted(stat_names):
+                self.wings_equip_effect_combo.addItem(stat_name)
+            self.wings_equip_effect_combo.currentIndexChanged.connect(self._refresh_list)
+            equip_effect_row.addWidget(self.wings_equip_effect_combo, 1)
+            layout.addLayout(equip_effect_row)
 
         sort_row = QHBoxLayout()
         sort_label = QLabel(_t("arm_sort_by_label"))
@@ -3525,6 +3601,18 @@ class ItemPickerPopup(QWidget):
         self._level_labels = {}
         self._row_icon_queue = []
 
+        equip_effect_filter = (
+            self.wings_equip_effect_combo.currentText()
+            if self.wings_equip_effect_combo else "All"
+        )
+        wings_equip_lines = _load_wings_equip_effect_lines() if self._is_wings_picker else {}
+
+        def has_equip_effect(item: dict) -> bool:
+            if equip_effect_filter in ("All", ""):
+                return True
+            lines = wings_equip_lines.get(_strip_wings_race_suffix(item.get("name", "")), [])
+            return any(line.rpartition(":")[0].strip() == equip_effect_filter for line in lines)
+
         matched = [
             item for item in self._items
             if (not query or query in item.get("name", "").lower())
@@ -3532,6 +3620,7 @@ class ItemPickerPopup(QWidget):
             and (not self._active_gear_types or _gear_type(item) in self._active_gear_types)
             and (not self._show_equipped_only or item.get("id") in self._equipped_ids)
             and (not self._show_favorites_only or item.get("id") in self._priority_ids)
+            and has_equip_effect(item)
         ]
         matched = self._sort_items(matched)
 
@@ -3899,7 +3988,194 @@ _WINGS_STAT_ID_MAP = {
     "frontattackdefense": "FrontDefense",
     "decreasedamage": "DamageTolerance",
     "amplifyweapondamage": "AmplifyWeaponDamage",
+    # Real bug found + fixed (User-reported, 2026-09-06, screenshot: "das
+    # sind nicht die Werte die bei den Wings angezeigt werden sollen" --
+    # Talisra Wings only showed "FPMax: 20000") -- the original 2026-09-04
+    # research audited raw keys seen ACROSS ALL LEVELS 0-10, but this app
+    # only ever reads level 0 (see _load_wings_items), and level 0's own
+    # real key set turned out to be different/smaller. A live re-scan of
+    # every item's actual level-0 stats found these 12 additional real
+    # keys, previously silently dropped entirely.
+    #
+    # "defense"/"evasion" confirmed via real number cross-reference
+    # (Talisra Wings: questlog "defense":100/"evasion":20 exactly match
+    # shugo.gg's real description text "Defense Bonus: 100"/"Evasion
+    # Bonus: 20" for the same item, matched by name).
+    "defense": "DefenseBonus",
+    "evasion": "EvasionBonus",
+    # The remaining 10 reuse _DAEVANION_STAT_ID_MAP's already gear-stat-id-
+    # audited values for the exact same raw-key vocabulary (both this file
+    # and the Daevanion Board's own data ultimately come from the same
+    # "_a"-style KR raw-key convention, e.g. "fixingdamage" -- see that
+    # dict's own docstring for the audit). Copied as literal values here
+    # rather than importing that dict directly, so a future Daevanion-only
+    # change can't silently affect Wings.
+    "accuracy": "WeaponAccuracy",
+    "block": "Block",
+    "criticalresist": "CriticalResist",
+    "hpmax": "HPMax",
+    "mpmax": "MPMax",
+    "perfect": "PerfectChance",
+    "bossnpcadddamage": "BossAttack",
+    "bossnpcdefense": "BossNpcDefense",
+    "fixingdamage": "WeaponFixingDamage",
+    "pvedamagedefense": "PvEDefense",
+    "amplifyalldamage": "AmplifyAllDamage",
 }
+
+# Canonical Stat Info id -> real display label, for showing Wings' Owned
+# Effect stats as readable text (User-reported, 2026-09-06: showing the
+# bare id "FPMax" instead of "Flight Power" was part of why "diesen Wert
+# kenne ich nicht" -- the other part was the missing /100 scale, see
+# _WINGS_STAT_SCALE_100). Every label here is copied verbatim from this
+# same id's own real (label, id) row definition elsewhere in this file
+# (_MAIN_STAT_ROWS and neighbors) -- not reworded, so it reads exactly like
+# every other stat already shown in Stat Info.
+_WINGS_STAT_DISPLAY = {
+    "FPMax": "Flight Power", "HardHit": "Smite", "DefensePierce": "Penetration",
+    "HPRegen": "Natural HP Regen", "MPRegen": "Natural MP Regen",
+    "MPCostReduction": "MP Cost", "AmplifyFrontAttack": "Front Attack Damage Boost",
+    "AmplifyHpHealGet": "Incoming Heal", "BackAttack": "Back Attack",
+    "BackAttackCriticalHitResist": "Back Attack Critical Hit Resist",
+    "FrontDefense": "Front Defense", "DamageTolerance": "Damage Tolerance",
+    "AmplifyWeaponDamage": "Weapon Damage Boost", "DefenseBonus": "Defense Bonus",
+    "EvasionBonus": "Evasion Bonus", "WeaponAccuracy": "Accuracy", "Block": "Block",
+    "CriticalResist": "Critical Hit Resist", "HPMax": "HP", "MPMax": "MP",
+    "PerfectChance": "Perfect Chance", "BossAttack": "Boss Attack",
+    "BossNpcDefense": "Boss Defense", "WeaponFixingDamage": "Attack",
+    "PvEDefense": "PvE Defense", "AmplifyAllDamage": "Damage Boost",
+}
+
+# shugo.gg's real Equip Effect display NAME -> canonical Stat Info id (User-
+# reported, 2026-09-06: "Die Talisra Wings geben ja auch Cooldown - was ist
+# mit den anderen Werten? ... prüfe bitte, ob wirklich alle werte im Status
+# Board mit einfließen" -- Equip Effect was display-only until now, never
+# actually counted). Every id here is looked up from this same file's own
+# real (label, id) row definitions -- not guessed -- including cases where
+# shugo's own wording differs slightly from this app's row label (e.g.
+# "Cooldown Reduction" here vs. this app's own row label "Cooldown", both
+# "CooldownReduction"; "Frontal Attack"/"Frontal Damage Boost" here vs.
+# "Front Attack"/"Front Attack Damage Boost" elsewhere). "Double Chance"
+# and plain "HP Potion Recovery" (no confirmed general Stat Info row, only
+# per-skill mechanics) are deliberately left out -- still shown as text,
+# just not counted, same "don't guess" policy as everywhere else here.
+_WINGS_EQUIP_EFFECT_ID_MAP = {
+    "Accuracy Bonus": "AccuracyBonus", "Attack Bonus": "AttackBonus",
+    "Block": "Block", "Block Penetration": "BlockPierce",
+    "Boss Attack": "BossAttack", "Boss Damage Boost": "BossNpcAmplifyDamage",
+    "Boss Damage Tolerance": "BossNpcDecreaseDamage", "Boss Defense": "BossNpcDefense",
+    "Cooldown Reduction": "CooldownReduction", "Critical Attack": "CriticalAttack",
+    "Critical Hit": "Critical", "Criticial Hit": "Critical",
+    "Critical Hit Resist": "CriticalResist", "Damage Boost": "AmplifyAllDamage",
+    "Defense Bonus": "DefenseBonus", "Endurance": "IronWall",
+    "Evasion Bonus": "EvasionBonus", "Frontal Attack": "FrontAttack",
+    "Frontal Damage Boost": "AmplifyFrontAttack", "Frontal Defense": "FrontDefense",
+    "HP": "HPMax", "HP Potion Recovery increase": "HpPotionRate",
+    "Impact-type Chance": "ShockPropertyAccuracy", "Incoming Heal": "AmplifyHpHealGet",
+    "MP": "MPMax", "MP Cost Reduction": "MPCostReduction", "Max Attack": "MaxAttack",
+    "Natural HP Regen": "HPRegen", "Natural MP Regen": "MPRegen",
+    "Penetration": "DefensePierce", "Perfect Chance": "PerfectChance",
+    "PvE Accuracy": "PvEAccuracy", "PvE Attack": "PvEAttack",
+    "PvE Damage Boost": "PvEAmplifyDamage", "PvE Damage Tolerance": "PvEDecreaseDamage",
+    "PvE Defense": "PvEDefense", "Regeneration": "Restoration",
+    "Status Effect Chance": "AbnormalAccuracy", "Status Effect Resist": "AbnormalResistance",
+}
+
+
+def _parse_wings_equip_effect_stats(lines: list[str]) -> dict[str, float]:
+    """Turns real "Stat Name: Value[%]" text lines into {canonical_id:
+    value}, via _WINGS_EQUIP_EFFECT_ID_MAP -- unmapped stat names silently
+    dropped, not guessed."""
+    stats: dict[str, float] = {}
+    for line in lines:
+        name, sep, value_text = line.rpartition(":")
+        if not sep:
+            continue
+        stat_id = _WINGS_EQUIP_EFFECT_ID_MAP.get(name.strip())
+        if not stat_id:
+            continue
+        try:
+            value = float(value_text.strip().rstrip("%"))
+        except ValueError:
+            continue
+        stats[stat_id] = stats.get(stat_id, 0.0) + value
+    return stats
+
+# questlog's numeric grade code -> this app's rarity string, cross-
+# referenced against real shugo.gg grades by name-substring match (2026-
+# 09-06, see _build_wings_extra_items' own docstring for the exact
+# match counts). 71 (the cosmetic-skin bucket) deliberately excluded --
+# matched zero real catalog entries, no signal to map from at all.
+_WINGS_GRADE_MAP = {
+    11: "Common",
+    21: "Rare",
+    31: "Legend",
+    41: "Unique",
+}
+
+
+_wings_equip_effect_cache: dict[str, list[str]] | None = None
+
+
+def _load_wings_equip_effect_lines() -> dict[str, list[str]]:
+    """{wings_name: [equip effect lines]} -- real Equip Effect text (User-
+    Wunsch, 2026-09-06: "Equipped und owned effekt prüfen") cross-
+    referenced from shugo.gg's REAL "Wings"/"Wings Unlocking Item" catalog
+    descriptions, since questlog's getWings API (the source for
+    _load_wings_items, already feeding Stat Info) has no equip-effect data
+    at all. Matched by substring (a Wings item's plain name, e.g. "Talisra
+    Wings", against shugo's own longer name, e.g. "Talisra Wings (Bound)")
+    -- the same match confirmed clean/majority-consistent for grade
+    coloring (see _WINGS_GRADE_MAP), but still only covers 64 of 134 real
+    Wings; items with no match here just show/count Owned Effect only
+    (same "real data where available, absent rather than guessed
+    elsewhere" policy as Pantheon's own 28-of-236-items gap). Used both for
+    display (main_stats_label text) AND, via _parse_wings_equip_effect_stats,
+    fed into Stat Info's numeric totals (_wings_stat_totals_for) -- see the
+    2026-09-06 follow-up ("prüfe ob wirklich alle werte im Status Board mit
+    einfließen") for why this stopped being display-only. Keyed by NAME
+    (not id) since both race variants of the same named wing share one
+    Equip Effect."""
+    global _wings_equip_effect_cache
+    if _wings_equip_effect_cache is not None:
+        return _wings_equip_effect_cache
+    result: dict[str, list[str]] = {}
+    try:
+        catalog = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+        catalog_items = catalog.get("items", catalog) if isinstance(catalog, dict) else catalog
+    except (OSError, json.JSONDecodeError):
+        catalog_items = []
+    shugo_wings = [it for it in catalog_items if (it.get("categoryName") or "") in ("Wings", "Wings Unlocking Item")]
+    try:
+        wings_entries = json.loads(WINGS_DATA_PATH.read_text(encoding="utf-8")) if WINGS_DATA_PATH.exists() else []
+    except (OSError, json.JSONDecodeError):
+        wings_entries = []
+    for entry in wings_entries:
+        name = entry.get("name") or ""
+        if not name or name in result:
+            continue
+        candidates = [it for it in shugo_wings if name in (it.get("name") or "")]
+        if not candidates:
+            continue
+        best = min(candidates, key=lambda it: len(it.get("name") or "") - len(name))
+        equip_lines, _owned_lines = _parse_wing_effect_lines(best.get("description") or "")
+        if equip_lines:
+            result[name] = equip_lines
+    _wings_equip_effect_cache = result
+    return result
+
+
+def _strip_wings_race_suffix(name: str) -> str:
+    """Reverses the " (Elyos)"/" (Asmodae)" disambiguation suffix
+    _build_wings_extra_items adds to each item's display name, back to
+    questlog's own plain base name -- needed wherever a Wings item must be
+    looked up by its ORIGINAL name (e.g. _load_wings_equip_effect_lines,
+    keyed on the un-suffixed name since Equip Effect doesn't differ by
+    race)."""
+    for suffix in (" (Elyos)", " (Asmodae)"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
 
 
 def _wings_icon_url(raw_icon: str) -> str:
@@ -3912,11 +4188,42 @@ def _wings_icon_url(raw_icon: str) -> str:
     return f"https://assets.playnccdn.com/static-aion2-gamedata/resources/{texture_name}.png"
 
 
+# Real bug found + fixed (User-reported, 2026-09-06: "was ist fpmax und
+# warum 20.000? diesen Wert kenne ich nicht") -- questlog stores every
+# PERCENTAGE-type stat internally at 100x the real in-game value (a
+# fixed-point convention, e.g. "1%" stored as raw 100), confirmed by
+# cross-referencing 17 items' raw "fpmax" against shugo.gg's real "Flight
+# Power" text: 16/17 showed an exact 100x ratio (fpmax 20000 -> Flight
+# Power 200; one outlier, "Lesser Daeva Wings", is a genuine upstream data
+# anomaly on one side or the other, not a pattern break). The SAME 100x
+# ratio was independently confirmed for decreasedamage/perfect/
+# amplifyalldamage/mpusedecrease against their own real shugo text.
+# amplifyweapondamage/amplifyfrontattack/amplifyhphealget never appear in
+# any cross-referenceable item's level-0 data to confirm directly, but are
+# scaled the same way BY ANALOGY -- same "amplify*" percentage-stat naming
+# pattern as the confirmed amplifyalldamage. Every other raw key (defense,
+# evasion, block, accuracy, hpmax, mpmax, ...) confirmed EXACTLY 1:1, no
+# scaling needed -- flat/absolute stats, not percentages.
+_WINGS_STAT_SCALE_100 = {
+    "fpmax", "decreasedamage", "perfect", "amplifyalldamage", "mpusedecrease",
+    "amplifyweapondamage", "amplifyfrontattack", "amplifyhphealget",
+}
+
+# Canonical ids that are real PERCENTAGES (shown with a trailing "%") --
+# everything in _WINGS_STAT_SCALE_100 except FPMax, which shares the same
+# 100x raw-storage quirk but is a flat number (Flight Power), not a percent.
+_WINGS_STAT_IS_PERCENT = {
+    "DamageTolerance", "PerfectChance", "AmplifyAllDamage", "MPCostReduction",
+    "AmplifyWeaponDamage", "AmplifyFrontAttack", "AmplifyHpHealGet",
+}
+
+
 def _load_wings_items() -> dict[str, dict[str, float]]:
     """{item_id_str: {stat_id: value}} using each Wings item's LEVEL 0
     stats only (see module comment above for why) with raw keys translated
-    through _WINGS_STAT_ID_MAP -- unmapped raw keys are silently dropped,
-    not guessed."""
+    through _WINGS_STAT_ID_MAP (unmapped raw keys are silently dropped, not
+    guessed) and percentage-type keys divided by 100 (see
+    _WINGS_STAT_SCALE_100)."""
     global _wings_items_cache
     if _wings_items_cache is not None:
         return _wings_items_cache
@@ -3930,8 +4237,11 @@ def _load_wings_items() -> dict[str, dict[str, float]]:
                 stats = {}
                 for raw_key, value in (level_zero.get("stats") or {}).items():
                     stat_id = _WINGS_STAT_ID_MAP.get(raw_key)
-                    if stat_id:
-                        stats[stat_id] = stats.get(stat_id, 0) + value
+                    if not stat_id:
+                        continue
+                    if raw_key in _WINGS_STAT_SCALE_100:
+                        value = value / 100
+                    stats[stat_id] = stats.get(stat_id, 0) + value
                 if stats:
                     result[str(entry["id"])] = stats
         except (OSError, json.JSONDecodeError, KeyError):
@@ -3944,17 +4254,22 @@ def _build_wings_extra_items() -> list[dict]:
     """Synthetic catalog entries for the Wings1 slot's item picker -- same
     "not in the real shugo.gg catalog, so invent a minimal listing" idea as
     _RUNE_EXTRA_ITEMS, scaled up to all 134 real Wings (67 named x Elyos/
-    Asmodian). categoryName "Wings Equip" is deliberately its OWN value,
+    Asmodae). categoryName "Wings Equip" is deliberately its OWN value,
     distinct from the real "Wings"/"Wings Unlocking Item" catalog values --
     keeps this slot's picker from ever mixing with the unlock-item catalog
     browsing the main Item Database already has, same isolation Rune's own
     "Rune" categoryName gets (absent from _ITEM_TOP_CATEGORIES entirely).
 
-    grade intentionally left blank: questlog's numeric grade codes (11/21/
-    31/41/71) have no confirmed mapping to this app's Common/Rare/Legend/
-    Unique/Epic strings (grade 71 alone is known to be a mixed cosmetic-
-    skin bucket, not a clean power tier -- see project_armory_pantheon_
-    wings_backlog memory), so no rarity color is guessed here.
+    grade: questlog's numeric codes (11/21/31/41/71) were cross-referenced
+    against shugo.gg's real grade strings by matching each Wings name as a
+    substring of a real "Wings"/"Wings Unlocking Item" catalog name (e.g.
+    "Aullaeu Wings" -> "Ancient Aullaeu Wings") -- 64 of 134 matched, giving
+    a clear, consistent majority signal per code (2026-09-06):
+    11->Common (2/2), 21->Rare (6/8), 31->Legend (12/14), 41->Unique
+    (40/40). Grade 71 (70 items, the purely cosmetic-skin bucket per
+    project_armory_pantheon_wings_backlog memory) matched ZERO real catalog
+    entries at all -- genuinely absent from shugo's catalog, not just
+    unclear, so it deliberately stays blank/uncolored rather than guessed.
 
     "options" carries each item's own level-0 stats as plain "Stat: Value"
     strings -- real bug found + fixed here (2026-09-06): _gear_type()
@@ -3976,11 +4291,21 @@ def _build_wings_extra_items() -> list[dict]:
             continue
         stats = wings_stats.get(str(item_id), {})
         options = [f"{stat_id}: {_format_number(value)}" for stat_id, value in stats.items()] or ["Wings"]
+        base_name = entry.get("name", "Wings")
+        # Real bug found + fixed (User-reported, 2026-09-06, screenshot:
+        # two visually-identical "Talisra Wings" tiles in the picker) --
+        # both race variants share the same name/icon-shape/stats, so a
+        # race suffix is the only way to tell them apart at all. "light"/
+        # "dark" are questlog's own race codes (Elyos/Asmodae, see the
+        # 2026-09-04 research note). _strip_wings_race_suffix() reverses
+        # this everywhere the PLAIN base name is needed again (e.g.
+        # _load_wings_equip_effect_lines's lookup).
+        race_suffix = {"light": " (Elyos)", "dark": " (Asmodae)"}.get(entry.get("race"), "")
         items.append({
             "id": int(item_id),
-            "name": entry.get("name", "Wings"),
+            "name": base_name + race_suffix,
             "image": _wings_icon_url(entry.get("icon", "")),
-            "grade": "",
+            "grade": _WINGS_GRADE_MAP.get(entry.get("grade"), ""),
             "options": options,
             "favorite": False, "tradable": False, "categoryName": "Wings Equip",
         })
@@ -15686,15 +16011,29 @@ class LoadoutWindow(QMainWindow):
         return self._wings_stat_totals_for(self._equipped)
 
     def _wings_stat_totals_for(self, equipped: dict) -> dict[str, float]:
-        """Wings1's level-0 stats (see _load_wings_items) out of an
-        ARBITRARY equipped dict -- only ever one slot to look up, unlike
-        Pantheon's multi-slot sum. Wired into _refresh_stat_info's totals
-        merge AND _compute_full_build_totals (Build Compare) (User-Wunsch,
-        2026-09-06)."""
+        """Wings1's real stats out of an ARBITRARY equipped dict -- only
+        ever one slot to look up, unlike Pantheon's multi-slot sum. Wired
+        into _refresh_stat_info's totals merge AND
+        _compute_full_build_totals (Build Compare) (User-Wunsch,
+        2026-09-06).
+
+        Combines BOTH real components of a worn Wings item -- Owned Effect
+        (questlog's level-0 data, _load_wings_items) and Equip Effect
+        (shugo.gg's cross-referenced text, _parse_wings_equip_effect_stats)
+        -- since both actually apply at once in-game (User-reported,
+        2026-09-06: "Die Talisra Wings geben ja auch Cooldown - was ist mit
+        den anderen Werten? ... prüfe ob wirklich alle werte im Status
+        Board mit einfließen" -- Equip Effect was display-only until now)."""
         item = equipped.get("Wings1")
         if not item:
             return {}
-        return dict(_load_wings_items().get(str(item.get("id") or ""), {}))
+        totals = dict(_load_wings_items().get(str(item.get("id") or ""), {}))
+        equip_lines = _load_wings_equip_effect_lines().get(
+            _strip_wings_race_suffix(item.get("name") or ""), []
+        )
+        for stat_id, value in _parse_wings_equip_effect_stats(equip_lines).items():
+            totals[stat_id] = totals.get(stat_id, 0.0) + value
+        return totals
 
     def _build_genius_insight_tab(self) -> QWidget:
         """Plans the Pet Genus system's 5 boards (Cogni/Fera/Natura/Varian/
@@ -17561,6 +17900,8 @@ class LoadoutWindow(QMainWindow):
                     source_lines.append(f"{_t('arm_stat_source_daevanion')}: {_format_number(daevanion_totals[stat_id])}{suffix}")
                 if passive_totals.get(stat_id, 0.0):
                     source_lines.append(f"{_t('arm_stat_source_passive')}: {_format_number(passive_totals[stat_id])}{suffix}")
+                if wings_totals.get(stat_id, 0.0):
+                    source_lines.append(f"{_t('arm_stat_source_wings')}: {_format_number(wings_totals[stat_id])}{suffix}")
                 source_lines.extend(
                     f"{attr_name}: {_format_number(attr_value)}{suffix}"
                     for attr_name, attr_value in attribute_by_attr.get(stat_id, {}).items()
@@ -19396,6 +19737,24 @@ class LoadoutWindow(QMainWindow):
             if weapon_category:
                 categories = [weapon_category]
 
+        picker_items = self._items
+        if slot_id == "Wings1":
+            # User-Wunsch, 2026-09-06: "Den Rasse Filter nutzen, sodass pro
+            # Rasse nur einmal die Wings angezeigt werden" -- each Wings
+            # item exists as two race variants with a " (Elyos)"/
+            # " (Asmodae)" disambiguation suffix (see
+            # _build_wings_extra_items); narrowing to the character's own
+            # race here cuts the list from 134 to 67 instead of showing
+            # both side by side.
+            race_suffix = {"Elyos": " (Elyos)", "Asmodae": " (Asmodae)"}.get(
+                self.character_race_combo.currentText()
+            )
+            if race_suffix:
+                picker_items = [
+                    i for i in self._items
+                    if i.get("categoryName") != "Wings Equip" or i.get("name", "").endswith(race_suffix)
+                ]
+
         priority_ids = {
             item.get("id")
             for chain in self._equip_priority_items.values()
@@ -19403,7 +19762,7 @@ class LoadoutWindow(QMainWindow):
             if item
         }
         popup = ItemPickerPopup(
-            self._items, categories, self.icon_cache, self.detail_cache, self,
+            picker_items, categories, self.icon_cache, self.detail_cache, self,
             active_gear_types=self._active_gear_types,
             priority_ids=priority_ids,
         )

@@ -36,6 +36,17 @@ These features are **not** part of an official update yet and are still under ac
 - Each Equip Build can now be linked to a specific Arcana/Skill Planner build and Genius Insight profile, so only that combination counts toward its stat panel/GearScore/damage estimate — useful once you're keeping more than one of each around.
 - Stat panel values now show a hover tooltip breaking down exactly where the number comes from (equipment, grouped into Weapon/Armor/Jewelry, plus Genius Insight, attributes, Arcana Lords, and the Daevanion Board); hovering a core-attribute/Lord value also shows what it feeds into, even at 0.
 - New Pantheon tab: a radial board (12 Artwork slots on the outer ring, 4 Statue slots on a middle ring, 1 Colossus slot in the center), filled from a left-hand inventory panel with search plus Rarity and Lord-value filters — each real item can only occupy one board slot at a time. Equipped Pantheon items' real Lord Points now feed the stat panel, GearScore, damage estimate, and Build Compare, the same way Arcana cards and gear already do.
+- New Wings equipment slot: pick from every real Wings item, pre-filtered to your character's own race, colored by rarity, with an Equip/Owned Effect filter to narrow the list. Both effect types feed the stat panel and GearScore the same way normal gear does. Level/enchant stays locked for now, since Wings enhancement isn't confirmed live on Global yet.
+
+---
+
+# Version 1.9.5
+
+Release Date: 2026-09-06
+
+## 🐛 Bug Fixes
+
+- **The item detail popup could still show clipped or incomplete content on the very first open, only rendering fully after moving or resizing the window.** Last version's fix wasn't quite enough for items with a lot of stats — it now resizes correctly every time.
 
 ---
 

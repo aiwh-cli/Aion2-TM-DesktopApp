@@ -1,6 +1,6 @@
 # Aion2 Task Manager
 
-**v1.9.1** — Modern desktop productivity manager for Aion players.
+**v1.9.5** — Modern desktop productivity manager for Aion players.
 
 Aion2 Task Manager combines task management, shopping organization, event timers, a visual flow map planner and an in-game HUD overlay into a single lightweight desktop application — built specifically for Aion 2 players who want to stay on top of their daily and weekly goals without alt-tabbing constantly. An Armory module (item database, crafting calculator, build planner) is available as an opt-in Beta and is still under active development — see the Roadmap section below.
 
@@ -57,6 +57,7 @@ Profiles store:
 * Settings, theme, language
 * Timer configuration
 * Flow map layout with node positions
+* Armory (Beta) - Profiles
 
 Export/Import profiles as `.json` for backup or sharing.
 
@@ -128,6 +129,7 @@ Opt-in area for gear planning, unlockable at your own risk via Settings → "Unl
 * **Item Database** — searchable catalog with category/class/rarity/PvP-PvE-Neutral filters, a grouped Categories sidebar, dedicated Wings filters
 * **Crafting Calculator** — full material chain for any craftable item, expandable ingredient-by-ingredient; a Compare (Direct Craft vs. Transfer) comparison tab; the item picker shows a Gear Level column so same-rarity items can be told apart by strength at a glance
 * **Build Planner** — assemble a virtual character loadout, compare gear side-by-side (Build Compare), save multiple named gear sets per class, enchant-level tracking per slot, and a Quick Select for auto-equipping a full crafted/dungeon-drop/PvP gear set by race and gear tier in one click, plus a Property Priority editor (per role and gear mode) to customize which substats get auto-picked
+* **Build Planner: Wings equipment slot** — pick from every real Wings item (both race variants, colored by rarity, filterable by Owned/Equip Effect), with both effect types feeding the stat panel and GearScore the same way normal gear does; level/enchant stays locked until Wings enhancement is confirmed live on Global
 * **Daevanion Board** — interactive per-class/deity board with real tier art, a checkable stat/skill sidebar, and an auto-router that finds the cheapest path to everything you've checked; feeds its skill bonuses straight into the Skill Planner and persists to your profile
 * **Skill Planner** — browse/filter class skills, track Skill Points and Stigma Points separately, build a Priority List (with remove/favorite/star), and an "Arcana Calculator" that finds the best-case Arcana card setup for a wishlist of extra skill levels
 * **Arcana tab** — an Information sub-tab to browse all card types/sets, and a Sets sub-tab holding your 5 real equip slots for this season's usable cards, which the Arcana Calculator can write straight into with one click; Sets share the same named build as the Skill Planner
@@ -139,7 +141,6 @@ Opt-in area for gear planning, unlockable at your own risk via Settings → "Unl
 * Item Database: "Compare Items" — compare two catalog items side by side, in the header spot the removed "Equip Character"/"Crafting Calculator" shortcut buttons used to occupy
 * Settings: an opt-in "Use app offline" download (icons + item details) so a fresh install can browse fully offline without waiting on per-item network fetches
 * Template assignment to multiple characters at once via checkboxes, instead of one at a time
-* Wings slot in the Build Planner's Equipment tab (needs its own synthetic catalog entries + a level-based bonus lookup, since Wings aren't in the real gear catalog with usable stats the normal way)
 * Rune slots (Clash Rune / Devotion Rune) in the Build Planner
 * Jewelry-granted skills and character passive/active skills factored into the Build Planner's numeric stat calculation (they already feed the Skill Planner's own level display, not yet GearScore/Stat Info)
 * A real "equipped Arcana cards" state feeding GearScore, the same way Gear/Daevanion already do
