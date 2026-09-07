@@ -23,7 +23,9 @@
         "notification_riss_enabled": false,
         "notification_riss_warn_minutes": 10,
         "notification_sound": "",
-        "timer_categories": ["Custom Timer"],
+        "timer_categories": [
+            "Custom Timer"
+        ],
         "custom_timers": []
     },
     "tasks": {
@@ -472,6 +474,16 @@
             "price": "150000",
             "currency": "kinah",
             "id": "ru000002-0000-0000-0000-000000000042"
+        },
+        {
+            "title": "Skin",
+            "location": "Abyss",
+            "schedule": "daily",
+            "priority": "middle",
+            "is_general": false,
+            "price": "1000",
+            "currency": "abyss",
+            "id": "ru000002-0000-0000-0000-000000000043"
         }
     ],
     "task_templates": [
@@ -506,6 +518,14 @@
             "priority": "high",
             "is_general": false,
             "id": "ru000003-0000-0000-0000-000000000004"
+        },
+        {
+            "title": "Duty Daily Command",
+            "location": "Journal",
+            "schedule": "daily",
+            "priority": "low",
+            "is_general": false,
+            "id": "ru000003-0000-0000-0000-000000000005"
         }
     ]
 }

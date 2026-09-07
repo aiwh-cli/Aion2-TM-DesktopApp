@@ -12,9 +12,12 @@ class CustomTimerManagerDialog(QDialog):
     the categories/timers lists so Cancel discards any changes made during
     this session; only accept() commits them back to the caller."""
 
-    def __init__(self, categories: list, custom_timers: list, parent=None):
+    def __init__(self, categories: list, custom_timers: list,
+                 language: str = "en", tr_func=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Custom Timer verwalten")
+        self._language = language
+        self._tr = tr_func or (lambda _l, k, **kw: k)
+        self.setWindowTitle(self._tr(self._language, "ct_manager_title"))
         self.setModal(True)
         self.setMinimumWidth(560)
 
@@ -27,7 +30,7 @@ class CustomTimerManagerDialog(QDialog):
 
         # ── Kategorien ────────────────────────────────────────────────────
         cat_hdr = QHBoxLayout()
-        cat_title = QLabel("Kategorien")
+        cat_title = QLabel(self._tr(self._language, "ct_manager_categories_title"))
         cat_title.setObjectName("settingsSectionTitle")
         cat_hdr.addWidget(cat_title)
         cat_hdr.addStretch()
@@ -42,7 +45,7 @@ class CustomTimerManagerDialog(QDialog):
 
         # ── Timer ─────────────────────────────────────────────────────────
         timer_hdr = QHBoxLayout()
-        timer_title = QLabel("Timer")
+        timer_title = QLabel(self._tr(self._language, "ct_manager_timer_section_title"))
         timer_title.setObjectName("settingsSectionTitle")
         self._add_ct_btn = QPushButton("＋")
         self._add_ct_btn.setObjectName("secondaryButton")
@@ -64,10 +67,10 @@ class CustomTimerManagerDialog(QDialog):
         # ── Buttons ───────────────────────────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        cancel_btn = QPushButton("Abbrechen")
+        cancel_btn = QPushButton(self._tr(self._language, "cancel"))
         cancel_btn.setObjectName("secondaryButton")
         cancel_btn.clicked.connect(self.reject)
-        close_btn = QPushButton("Fertig")
+        close_btn = QPushButton(self._tr(self._language, "ct_manager_done_button"))
         close_btn.setObjectName("primaryButton")
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(cancel_btn)
@@ -92,7 +95,7 @@ class CustomTimerManagerDialog(QDialog):
         for cat in self._timer_categories:
             self._cat_rows_layout.addWidget(self._build_category_row(cat))
         if len(self._timer_categories) < 4:
-            add_btn = QPushButton("＋ Kategorie hinzufügen")
+            add_btn = QPushButton(self._tr(self._language, "ct_manager_add_category_button"))
             add_btn.setObjectName("secondaryButton")
             add_btn.clicked.connect(self._add_category)
             self._cat_rows_layout.addWidget(add_btn)
@@ -108,7 +111,7 @@ class CustomTimerManagerDialog(QDialog):
         dot.setStyleSheet("color: #22d3ee; font-size: 14px;")
         name_lbl = QLabel(cat_name)
         name_lbl.setObjectName("settingsLabel")
-        rename_btn = QPushButton("Umbenennen")
+        rename_btn = QPushButton(self._tr(self._language, "ct_manager_rename_button"))
         rename_btn.setObjectName("secondaryButton")
         rename_btn.setFixedWidth(110)
         rename_btn.clicked.connect(lambda checked=False, cn=cat_name: self._rename_category(cn))
@@ -130,7 +133,11 @@ class CustomTimerManagerDialog(QDialog):
     def _add_category(self):
         if len(self._timer_categories) >= 4:
             return
-        name, ok = QInputDialog.getText(self, "Kategorie hinzufügen", "Name:")
+        name, ok = QInputDialog.getText(
+            self,
+            self._tr(self._language, "ct_manager_add_category_dialog_title"),
+            self._tr(self._language, "ct_manager_name_label"),
+        )
         if ok and name.strip():
             name = name.strip()[:20]
             if name not in self._timer_categories:
@@ -144,7 +151,10 @@ class CustomTimerManagerDialog(QDialog):
 
     def _rename_category(self, old_name: str):
         new_name, ok = QInputDialog.getText(
-            self, "Kategorie umbenennen", "Neuer Name:", text=old_name
+            self,
+            self._tr(self._language, "ct_manager_rename_category_dialog_title"),
+            self._tr(self._language, "ct_manager_new_name_label"),
+            text=old_name,
         )
         if ok and new_name.strip():
             new_name = new_name.strip()[:20]
@@ -165,6 +175,7 @@ class CustomTimerManagerDialog(QDialog):
         dlg = CustomTimerDialog(
             categories=self._timer_categories,
             category=self._timer_categories[0],
+            language=self._language, tr_func=self._tr,
             parent=self,
         )
         if dlg.exec():
@@ -189,18 +200,22 @@ class CustomTimerManagerDialog(QDialog):
             interval_minutes=cfg.get("interval_minutes", 60),
             interval_seconds=cfg.get("interval_seconds", 3600),
             start_time=cfg.get("start_time", ""),
+            countdown_duration_seconds=cfg.get("countdown_duration_seconds", 7200),
+            countdown_restart_delay_seconds=cfg.get("countdown_restart_delay_seconds", 0),
             categories=self._timer_categories,
             category=cfg.get("category", self._timer_categories[0]),
             notification_sound=cfg.get("notification_sound", ""),
             notification_warn_minutes=cfg.get("notification_warn_minutes", 1),
+            language=self._language, tr_func=self._tr,
             parent=self,
         )
         if dlg.exec():
             values = dlg.get_values()
             for field in ("name", "color", "timer_mode", "reset_time",
                           "reset_day", "interval_minutes", "interval_seconds",
-                          "start_time", "category", "notification_sound",
-                          "notification_warn_minutes"):
+                          "start_time", "countdown_duration_seconds",
+                          "countdown_restart_delay_seconds", "category",
+                          "notification_sound", "notification_warn_minutes"):
                 if field in values:
                     cfg[field] = values[field]
                 else:
@@ -247,7 +262,7 @@ class CustomTimerManagerDialog(QDialog):
         cat_lbl = QLabel(f"[{cfg.get('category', default_cat)}]")
         cat_lbl.setObjectName("settingsDescription")
 
-        edit_btn = QPushButton("Bearbeiten")
+        edit_btn = QPushButton(self._tr(self._language, "ct_manager_edit_button"))
         edit_btn.setObjectName("secondaryButton")
         edit_btn.setFixedWidth(110)
         edit_btn.clicked.connect(lambda checked=False, i=idx: self._edit_custom_timer(i))
@@ -262,7 +277,9 @@ class CustomTimerManagerDialog(QDialog):
         toggle_btn.setChecked(cfg.get("enabled", False))
         toggle_btn.setObjectName("toggleButton")
         toggle_btn.setFixedWidth(70)
-        toggle_btn.setText("On" if cfg.get("enabled", False) else "Off")
+        on_text = self._tr(self._language, "ct_manager_on")
+        off_text = self._tr(self._language, "ct_manager_off")
+        toggle_btn.setText(on_text if cfg.get("enabled", False) else off_text)
         toggle_btn.toggled.connect(
             lambda checked, i=idx, btn=toggle_btn: self._on_custom_timer_toggled(i, checked, btn)
         )
@@ -282,23 +299,35 @@ class CustomTimerManagerDialog(QDialog):
         if idx < len(self._custom_timer_configs):
             self._custom_timer_configs[idx]["enabled"] = checked
         if btn:
-            btn.setText("On" if checked else "Off")
+            key = "ct_manager_on" if checked else "ct_manager_off"
+            btn.setText(self._tr(self._language, key))
 
-    @staticmethod
-    def _format_timer_summary(cfg: dict) -> str:
+    def _format_timer_summary(self, cfg: dict) -> str:
         mode = cfg.get("timer_mode", "hourly")
         if mode == "daily":
-            return f"Täglich {cfg.get('reset_time', '09:00')}"
+            return self._tr(
+                self._language, "ct_manager_summary_daily",
+                time=cfg.get("reset_time", "09:00"),
+            )
         if mode == "weekly":
-            day = cfg.get("reset_day", "Mo")
-            t = cfg.get("reset_time", "09:00")
-            return f"Wöchentlich {day} {t}"
+            return self._tr(
+                self._language, "ct_manager_summary_weekly",
+                day=cfg.get("reset_day", "Mo"), time=cfg.get("reset_time", "09:00"),
+            )
         if mode == "hourly":
             mins = cfg.get("interval_minutes", 60)
             h, m = divmod(mins, 60)
             if m == 0:
-                return f"Alle {h}h"
-            return f"Alle {h}h {m}min"
+                return self._tr(self._language, "ct_manager_summary_hourly_h", h=h)
+            return self._tr(self._language, "ct_manager_summary_hourly_hm", h=h, m=m)
+        if mode == "countdown":
+            secs = cfg.get("countdown_duration_seconds", 7200)
+            h, rem = divmod(secs, 3600)
+            m, _s = divmod(rem, 60)
+            delay = cfg.get("countdown_restart_delay_seconds", 0)
+            base = f"{h}h {m}min" if m else f"{h}h"
+            prefix = self._tr(self._language, "ct_manager_summary_countdown_prefix", base=base)
+            return prefix + (f" (+{delay}s)" if delay else "")
         # custom
         secs = cfg.get("interval_seconds", 3600)
         h, rem = divmod(secs, 3600)

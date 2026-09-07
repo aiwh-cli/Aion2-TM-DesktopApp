@@ -1373,11 +1373,33 @@ class MainWindow(QMainWindow):
                     )
                     seconds = (next_ct - now).total_seconds()
                     ct_text = self.format_reset_countdown(seconds)
+                elif mode == "countdown":
+                    dur = max(1, ct.get("countdown_duration_seconds", 7200))
+                    if not ct.get("countdown_active"):
+                        ct_text = self._format_custom_countdown(dur, "hh:mm:ss")
+                        self._custom_notified[i] = False
+                        seconds = None
+                    else:
+                        delay = max(0, min(60, ct.get("countdown_restart_delay_seconds", 0)))
+                        phase, remaining = self._get_countdown_phase(
+                            dur, delay, ct.get("countdown_started_at"), now
+                        )
+                        ct_text = self._format_custom_countdown(remaining, "hh:mm:ss")
+                        if phase == "delay":
+                            ct_text = f"⟳ {ct_text}"
+                        # Only the "duration about to elapse" moment should
+                        # notify -- not the auto-restart delay's own countdown.
+                        seconds = remaining if phase == "running" else None
                 else:  # hourly (default, backward compat)
-                    next_ct = self._get_next_custom_timer_time(ct.get("interval_minutes", 60))
+                    next_ct = self._get_next_custom_timer_time_seconds(
+                        max(60, ct.get("interval_minutes", 60) * 60),
+                        ct.get("start_time", "00:00"),
+                    )
                     seconds = (next_ct - now).total_seconds()
                     ct_text = self._format_custom_countdown(seconds, "hh:mm:ss")
                 self.timers_page.set_custom_timer_countdown(i, ct_text)
+                if seconds is None:
+                    continue
                 warn_minutes = ct.get("notification_warn_minutes", 1)
                 warn_secs = warn_minutes * 60
                 check_secs = warn_secs if warn_secs > 0 else 10
@@ -1812,14 +1834,6 @@ class MainWindow(QMainWindow):
 
         return anchor
             
-    def _get_next_custom_timer_time(self, interval_minutes: int) -> "datetime":
-        now = datetime.now()
-        interval = timedelta(minutes=interval_minutes)
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        elapsed_secs = (now - midnight).total_seconds()
-        intervals_passed = int(elapsed_secs / interval.total_seconds())
-        return midnight + interval * (intervals_passed + 1)
-
     def _get_next_custom_timer_time_seconds(self, interval_seconds: int, start_time: str = "00:00") -> "datetime":
         now = datetime.now()
         h, m = map(int, start_time.split(":"))
@@ -1829,6 +1843,56 @@ class MainWindow(QMainWindow):
         elapsed = (now - anchor).total_seconds()
         intervals_passed = int(elapsed / interval_seconds)
         return anchor + timedelta(seconds=interval_seconds * (intervals_passed + 1))
+
+    @staticmethod
+    def _get_countdown_phase(
+        duration_seconds: int, delay_seconds: int, started_at_str: str | None, now: "datetime"
+    ) -> tuple:
+        """Returns (phase, remaining_seconds) for a running Countdown Timer.
+        "running" while counting down the configured duration; "delay"
+        while waiting out the configured auto-restart delay before the next
+        cycle starts. Modulo-based (same idea as
+        _get_next_custom_timer_time_seconds) so it stays correct however
+        much wall-clock time passed while the app was closed, instead of
+        needing to step through every missed cycle one at a time."""
+        if not started_at_str:
+            return "running", float(duration_seconds)
+        try:
+            started_at = datetime.fromisoformat(started_at_str)
+        except ValueError:
+            return "running", float(duration_seconds)
+        cycle_length = duration_seconds + delay_seconds
+        if cycle_length <= 0:
+            return "running", float(duration_seconds)
+        elapsed = (now - started_at).total_seconds()
+        position = elapsed % cycle_length
+        if position < duration_seconds:
+            return "running", duration_seconds - position
+        return "delay", cycle_length - position
+
+    def toggle_countdown_timer(self, idx: int):
+        """Starts/stops a Countdown Timer's Start/Stop button -- called from
+        both the overlay row and the Timers page card. Stopping clears the
+        anchor entirely (fully resets to the static configured duration)
+        rather than pausing/resuming, matching the simple Start/Stop the
+        feature was asked for."""
+        if idx >= len(self.custom_timers):
+            return
+        ct = self.custom_timers[idx]
+        if ct.get("timer_mode") != "countdown":
+            return
+        if ct.get("countdown_active"):
+            ct["countdown_active"] = False
+            ct.pop("countdown_started_at", None)
+        else:
+            ct["countdown_active"] = True
+            ct["countdown_started_at"] = datetime.now().isoformat()
+        self._custom_notified[idx] = False
+        if self.auto_save:
+            self.save_profile(silent=True)
+        self.update_countdowns()
+        if hasattr(self, "overlay") and self.overlay.isVisible():
+            self.overlay.refresh()
 
     @staticmethod
     def _get_next_daily_custom_time(reset_time_str: str) -> "datetime":
@@ -1920,7 +1984,10 @@ class MainWindow(QMainWindow):
         self.settings_page.show_timer_section()
 
     def open_custom_timer_manager(self):
-        dlg = CustomTimerManagerDialog(self.timer_categories, self.custom_timers, parent=self)
+        dlg = CustomTimerManagerDialog(
+            self.timer_categories, self.custom_timers,
+            language=self.language, tr_func=tr, parent=self,
+        )
         if dlg.exec():
             self.timer_categories = dlg.get_categories()
             self.custom_timers = dlg.get_custom_timers()
@@ -2493,6 +2560,20 @@ class MainWindow(QMainWindow):
         for widget in self.findChildren(QWidget):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
+
+        # OverlayWindow has no Qt parent (standalone Qt.Tool window), so it's
+        # invisible to self.findChildren() above and never picked up the
+        # theme property that drives the per-theme QSS -- its own buttons
+        # (Overlay*, including the Countdown Timer's Start/Stop) stayed
+        # whatever the unscoped/Abyss style said regardless of the active
+        # theme until now.
+        if hasattr(self, "overlay"):
+            self.overlay.setProperty("theme", theme)
+            self.overlay.style().unpolish(self.overlay)
+            self.overlay.style().polish(self.overlay)
+            for widget in self.overlay.findChildren(QWidget):
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
 
         self.update()
 

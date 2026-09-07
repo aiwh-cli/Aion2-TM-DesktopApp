@@ -1,6 +1,6 @@
 # Aion2 Task Manager
 
-**v1.9.5** — Modern desktop productivity manager for Aion players.
+**v1.9.6** — Modern desktop productivity manager for Aion players.
 
 Aion2 Task Manager combines task management, shopping organization, event timers, a visual flow map planner and an in-game HUD overlay into a single lightweight desktop application — built specifically for Aion 2 players who want to stay on top of their daily and weekly goals without alt-tabbing constantly. An Armory module (item database, crafting calculator, build planner) is available as an opt-in Beta and is still under active development — see the Roadmap section below.
 
@@ -29,6 +29,7 @@ Aion2 Task Manager combines task management, shopping organization, event timers
 * Weekly Reset countdown
 * Shugo Event Timer (configurable interval)
 * Rift Timer (configurable anchor & interval)
+* Custom Timers (Daily/Weekly/Hourly/Custom/Countdown modes) with per-timer color, notification sound and category — the Countdown mode is started/stopped directly from the in-game overlay
 
 ### 🗺 Flow Map Planner
 

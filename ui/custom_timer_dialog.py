@@ -9,19 +9,19 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QTime
 
 CUSTOM_TIMER_COLORS = [
-    ("#22d3ee", "Cyan"),
-    ("#a855f7", "Lila"),
-    ("#22c55e", "Grün"),
-    ("#ef4444", "Rot"),
-    ("#f97316", "Orange"),
-    ("#ec4899", "Pink"),
-    ("#f59e0b", "Gelb"),
-    ("#3b82f6", "Blau"),
+    ("#22d3ee", "ct_color_cyan"),
+    ("#a855f7", "ct_color_purple"),
+    ("#22c55e", "ct_color_green"),
+    ("#ef4444", "ct_color_red"),
+    ("#f97316", "ct_color_orange"),
+    ("#ec4899", "ct_color_pink"),
+    ("#f59e0b", "ct_color_yellow"),
+    ("#3b82f6", "ct_color_blue"),
 ]
 
 _HOUR_PRESETS = [1, 2, 3, 4, 5, 6]
 _DAY_KEYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
-_MODE_ORDER = ["daily", "weekly", "hourly", "custom"]
+_MODE_ORDER = ["daily", "weekly", "hourly", "custom", "countdown"]
 
 
 class CustomTimerDialog(QDialog):
@@ -30,11 +30,16 @@ class CustomTimerDialog(QDialog):
                  reset_time: str = "09:00", reset_day: str = "Mo",
                  interval_minutes: int = 60, interval_seconds: int = 3600,
                  start_time: str = "",
+                 countdown_duration_seconds: int = 7200,
+                 countdown_restart_delay_seconds: int = 0,
                  categories: list = None, category: str = "",
                  notification_sound: str = "",
                  notification_warn_minutes: int = 1,
+                 language: str = "en", tr_func=None,
                  parent=None):
         super().__init__(parent)
+        self._language = language
+        self._tr = tr_func or (lambda _l, k, **kw: k)
         self.setWindowTitle("Custom Timer")
         self.setModal(True)
         self.setMinimumWidth(500)
@@ -49,7 +54,7 @@ class CustomTimerDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
 
-        title_lbl = QLabel("Custom Timer konfigurieren")
+        title_lbl = QLabel(self._tr(self._language, "ct_dialog_title"))
         title_lbl.setObjectName("settingsSectionTitle")
         layout.addWidget(title_lbl)
 
@@ -74,19 +79,19 @@ class CustomTimerDialog(QDialog):
 
         name_col = QVBoxLayout()
         name_col.setSpacing(4)
-        name_lbl = QLabel("Name (max. 10 Zeichen)")
+        name_lbl = QLabel(self._tr(self._language, "ct_dialog_name_label"))
         name_lbl.setObjectName("settingsLabel")
         self.name_input = QLineEdit(name)
         self.name_input.setMaxLength(10)
         self.name_input.setObjectName("settingsTimeInput")
-        self.name_input.setPlaceholderText("z.B. Lager")
+        self.name_input.setPlaceholderText(self._tr(self._language, "ct_dialog_name_placeholder"))
         self.name_input.textChanged.connect(self._update_preview)
         name_col.addWidget(name_lbl)
         name_col.addWidget(self.name_input)
 
         cat_col = QVBoxLayout()
         cat_col.setSpacing(4)
-        cat_lbl = QLabel("Kategorie")
+        cat_lbl = QLabel(self._tr(self._language, "ct_dialog_category_label"))
         cat_lbl.setObjectName("settingsLabel")
         self.category_combo = QComboBox()
         self.category_combo.setObjectName("settingsCombo")
@@ -113,7 +118,7 @@ class CustomTimerDialog(QDialog):
         dtl.setSpacing(10)
         h_d, m_d = map(int, reset_time.split(":"))
         daily_row = QHBoxLayout()
-        reset_lbl = QLabel("Reset-Uhrzeit")
+        reset_lbl = QLabel(self._tr(self._language, "ct_dialog_reset_time_label"))
         reset_lbl.setObjectName("settingsInlineLabel")
         reset_lbl.setFixedWidth(110)
         self.daily_time = QTimeEdit()
@@ -126,7 +131,7 @@ class CustomTimerDialog(QDialog):
         daily_row.addStretch()
         dtl.addLayout(daily_row)
         dtl.addStretch()
-        self._mode_tabs.addTab(daily_tab, "Daily")
+        self._mode_tabs.addTab(daily_tab, self._tr(self._language, "schedule_daily"))
 
         # Weekly
         weekly_tab = QWidget()
@@ -149,7 +154,7 @@ class CustomTimerDialog(QDialog):
         day_btn_row.addStretch()
         h_w, m_w = map(int, reset_time.split(":"))
         weekly_time_row = QHBoxLayout()
-        wtime_lbl = QLabel("Uhrzeit")
+        wtime_lbl = QLabel(self._tr(self._language, "ct_dialog_time_label"))
         wtime_lbl.setObjectName("settingsInlineLabel")
         wtime_lbl.setFixedWidth(110)
         self.weekly_time = QTimeEdit()
@@ -163,7 +168,7 @@ class CustomTimerDialog(QDialog):
         wtl.addLayout(day_btn_row)
         wtl.addLayout(weekly_time_row)
         wtl.addStretch()
-        self._mode_tabs.addTab(weekly_tab, "Weekly")
+        self._mode_tabs.addTab(weekly_tab, self._tr(self._language, "schedule_weekly"))
 
         # Hourly
         hourly_tab = QWidget()
@@ -185,9 +190,9 @@ class CustomTimerDialog(QDialog):
                 preset_match = True
             self._hourly_preset_group.addButton(btn)
             presets_row.addWidget(btn)
-        self._hourly_pencil_btn = QPushButton("Custom")
+        self._hourly_pencil_btn = QPushButton(self._tr(self._language, "ct_dialog_tab_custom"))
         self._hourly_pencil_btn.setObjectName("secondaryButton")
-        self._hourly_pencil_btn.setFixedSize(64, 32)
+        self._hourly_pencil_btn.setFixedSize(112, 32)
         self._hourly_pencil_btn.setCheckable(True)
         self._hourly_pencil_btn.setChecked(not preset_match and timer_mode == "hourly")
         self._hourly_pencil_btn.clicked.connect(self._on_hourly_pencil_clicked)
@@ -207,8 +212,23 @@ class CustomTimerDialog(QDialog):
         hmanual_row.addStretch()
         self._hourly_manual_widget.setVisible(self._hourly_pencil_btn.isChecked())
         htl.addWidget(self._hourly_manual_widget)
+        hourly_start_row = QHBoxLayout()
+        hourly_start_row.setSpacing(8)
+        hourly_start_lbl = QLabel(self._tr(self._language, "ct_dialog_start_label"))
+        hourly_start_lbl.setObjectName("settingsInlineLabel")
+        hourly_start_lbl.setFixedWidth(70)
+        h_hst, m_hst = map(int, start_time.split(":"))
+        self.hourly_start_time = QTimeEdit()
+        self.hourly_start_time.setObjectName("settingsTimeInput")
+        self.hourly_start_time.setDisplayFormat("HH:mm")
+        self.hourly_start_time.setTime(QTime(h_hst, m_hst))
+        self.hourly_start_time.setFixedWidth(110)
+        hourly_start_row.addWidget(hourly_start_lbl)
+        hourly_start_row.addWidget(self.hourly_start_time)
+        hourly_start_row.addStretch()
+        htl.addLayout(hourly_start_row)
         htl.addStretch()
-        self._mode_tabs.addTab(hourly_tab, "Hourly")
+        self._mode_tabs.addTab(hourly_tab, self._tr(self._language, "ct_dialog_tab_hourly"))
 
         # Custom
         custom_tab = QWidget()
@@ -220,7 +240,7 @@ class CustomTimerDialog(QDialog):
         # Start
         custom_start_row = QHBoxLayout()
         custom_start_row.setSpacing(8)
-        start_lbl = QLabel("Start")
+        start_lbl = QLabel(self._tr(self._language, "ct_dialog_start_label"))
         start_lbl.setObjectName("settingsInlineLabel")
         start_lbl.setFixedWidth(70)
         h_st, m_st = map(int, start_time.split(":"))
@@ -236,7 +256,7 @@ class CustomTimerDialog(QDialog):
         # Intervall
         custom_interval_row = QHBoxLayout()
         custom_interval_row.setSpacing(6)
-        ivl_lbl = QLabel("Intervall")
+        ivl_lbl = QLabel(self._tr(self._language, "ct_dialog_interval_label"))
         ivl_lbl.setObjectName("settingsInlineLabel")
         ivl_lbl.setFixedWidth(70)
         self.custom_hours = QSpinBox()
@@ -262,7 +282,73 @@ class CustomTimerDialog(QDialog):
         custom_interval_row.addStretch()
         ctl.addLayout(custom_interval_row)
         ctl.addStretch()
-        self._mode_tabs.addTab(custom_tab, "Custom")
+        self._mode_tabs.addTab(custom_tab, self._tr(self._language, "ct_dialog_tab_custom"))
+
+        # Countdown -- manually started/stopped from the overlay (User-
+        # Wunsch, 2026-09-07: "einen Countdown Button für das Overlay ...
+        # stellt diesen Countdown Timer auf eine Zeit ein"), unlike the
+        # other modes which always run from wall-clock alone. Only the
+        # static config (duration + optional auto-restart delay) lives
+        # here -- the running/started-at state is runtime-only, toggled
+        # from the overlay's Start/Stop button (see main_window.py).
+        countdown_tab = QWidget()
+        cdtl = QVBoxLayout(countdown_tab)
+        cdtl.setContentsMargins(8, 16, 8, 8)
+        cdtl.setSpacing(10)
+        cd_dur = max(1, countdown_duration_seconds)
+        cd_h, cd_m = divmod(cd_dur // 60, 60)
+        cd_duration_row = QHBoxLayout()
+        cd_duration_row.setSpacing(6)
+        cd_dur_lbl = QLabel(self._tr(self._language, "ct_dialog_duration_label"))
+        cd_dur_lbl.setObjectName("settingsInlineLabel")
+        cd_dur_lbl.setFixedWidth(70)
+        self.countdown_hours = QSpinBox()
+        self.countdown_hours.setObjectName("settingsTimeInput")
+        self.countdown_hours.setRange(0, 99)
+        self.countdown_hours.setValue(min(cd_h, 99))
+        self.countdown_hours.setFixedWidth(90)
+        cd_h_unit = QLabel("h")
+        cd_h_unit.setObjectName("settingsInlineLabel")
+        self.countdown_minutes = QSpinBox()
+        self.countdown_minutes.setObjectName("settingsTimeInput")
+        self.countdown_minutes.setRange(0, 59)
+        self.countdown_minutes.setValue(cd_m)
+        self.countdown_minutes.setFixedWidth(90)
+        cd_m_unit = QLabel("min")
+        cd_m_unit.setObjectName("settingsInlineLabel")
+        cd_duration_row.addWidget(cd_dur_lbl)
+        cd_duration_row.addWidget(self.countdown_hours)
+        cd_duration_row.addWidget(cd_h_unit)
+        cd_duration_row.addSpacing(6)
+        cd_duration_row.addWidget(self.countdown_minutes)
+        cd_duration_row.addWidget(cd_m_unit)
+        cd_duration_row.addStretch()
+        cdtl.addLayout(cd_duration_row)
+        # Auto-restart delay
+        cd_delay_row = QHBoxLayout()
+        cd_delay_row.setSpacing(6)
+        cd_delay_lbl = QLabel(self._tr(self._language, "ct_dialog_restart_after_label"))
+        cd_delay_lbl.setObjectName("settingsInlineLabel")
+        cd_delay_lbl.setFixedWidth(90)
+        self.countdown_restart_delay = QSpinBox()
+        self.countdown_restart_delay.setObjectName("settingsTimeInput")
+        self.countdown_restart_delay.setRange(0, 60)
+        self.countdown_restart_delay.setValue(
+            max(0, min(60, countdown_restart_delay_seconds))
+        )
+        self.countdown_restart_delay.setFixedWidth(90)
+        cd_delay_unit = QLabel(self._tr(self._language, "ct_dialog_seconds_unit"))
+        cd_delay_unit.setObjectName("settingsInlineLabel")
+        cd_delay_row.addWidget(cd_delay_lbl)
+        cd_delay_row.addWidget(self.countdown_restart_delay)
+        cd_delay_row.addWidget(cd_delay_unit)
+        cd_delay_row.addStretch()
+        cdtl.addLayout(cd_delay_row)
+        cd_hint = QLabel(self._tr(self._language, "ct_dialog_countdown_hint"))
+        cd_hint.setObjectName("settingsDescription")
+        cdtl.addWidget(cd_hint)
+        cdtl.addStretch()
+        self._mode_tabs.addTab(countdown_tab, self._tr(self._language, "ct_dialog_tab_countdown"))
 
         tab_idx = _MODE_ORDER.index(timer_mode) if timer_mode in _MODE_ORDER else 2
         self._mode_tabs.setCurrentIndex(tab_idx)
@@ -270,7 +356,7 @@ class CustomTimerDialog(QDialog):
         layout.addWidget(self._mode_tabs)
 
         # ── 3. Farbe ──────────────────────────────────────────────────────
-        color_lbl = QLabel("Farbe")
+        color_lbl = QLabel(self._tr(self._language, "ct_dialog_color_label"))
         color_lbl.setObjectName("settingsLabel")
         layout.addWidget(color_lbl)
 
@@ -281,11 +367,11 @@ class CustomTimerDialog(QDialog):
         color_panel_layout.setSpacing(8)
         self.color_group = QButtonGroup(self)
         self.color_group.setExclusive(True)
-        for i, (hex_color, color_name) in enumerate(CUSTOM_TIMER_COLORS):
+        for i, (hex_color, color_name_key) in enumerate(CUSTOM_TIMER_COLORS):
             btn = QPushButton()
             btn.setCheckable(True)
             btn.setFixedSize(44, 30)
-            btn.setToolTip(color_name)
+            btn.setToolTip(self._tr(self._language, color_name_key))
             btn.setStyleSheet(
                 f"QPushButton {{ background-color: {hex_color}; border-radius: 6px;"
                 f" border: 2px solid transparent; }}"
@@ -300,7 +386,7 @@ class CustomTimerDialog(QDialog):
         layout.addWidget(color_panel)
 
         # ── 4. Benachrichtigungston ───────────────────────────────────────
-        sound_lbl = QLabel("Benachrichtigungston")
+        sound_lbl = QLabel(self._tr(self._language, "ct_dialog_notification_sound_label"))
         sound_lbl.setObjectName("settingsLabel")
         layout.addWidget(sound_lbl)
 
@@ -312,19 +398,19 @@ class CustomTimerDialog(QDialog):
 
         self.sound_combo = QComboBox()
         self.sound_combo.setObjectName("settingsCombo")
-        self.sound_combo.addItem("-- Kein Sound --", "")
+        self.sound_combo.addItem(self._tr(self._language, "ct_dialog_no_sound"), "")
         for path in sorted(glob.glob(r"C:\Windows\Media\*.wav")):
             sound_name = os.path.splitext(os.path.basename(path))[0]
             self.sound_combo.addItem(sound_name, path)
         idx = self.sound_combo.findData(notification_sound)
         self.sound_combo.setCurrentIndex(max(0, idx))
 
-        self.sound_test_btn = QPushButton("▶ Test")
+        self.sound_test_btn = QPushButton(self._tr(self._language, "ct_dialog_test_button"))
         self.sound_test_btn.setObjectName("secondaryButton")
         self.sound_test_btn.setFixedWidth(70)
         self.sound_test_btn.clicked.connect(self._preview_sound)
 
-        warn_lbl = QLabel("Vorwarnung")
+        warn_lbl = QLabel(self._tr(self._language, "ct_dialog_warn_label"))
         warn_lbl.setObjectName("settingsInlineLabel")
 
         self.warn_combo = QComboBox()
@@ -344,10 +430,10 @@ class CustomTimerDialog(QDialog):
         # ── Buttons ───────────────────────────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.cancel_btn = QPushButton("Abbrechen")
+        self.cancel_btn = QPushButton(self._tr(self._language, "cancel"))
         self.cancel_btn.setObjectName("secondaryButton")
         self.cancel_btn.clicked.connect(self.reject)
-        self.ok_btn = QPushButton("Speichern")
+        self.ok_btn = QPushButton(self._tr(self._language, "save"))
         self.ok_btn.setObjectName("primaryButton")
         self.ok_btn.clicked.connect(self.accept)
         btn_row.addWidget(self.cancel_btn)
@@ -386,6 +472,7 @@ class CustomTimerDialog(QDialog):
             "weekly": "2T 14:30",
             "hourly": "01:30:00",
             "custom": "2T 23:00",
+            "countdown": "02:00:00",
         }.get(mode, "00:00:00")
 
     # ── Result ────────────────────────────────────────────────────────────
@@ -413,6 +500,11 @@ class CustomTimerDialog(QDialog):
             else:
                 t = self.hourly_time.time()
                 result["interval_minutes"] = max(1, t.hour() * 60 + t.minute())
+            result["start_time"] = self.hourly_start_time.time().toString("HH:mm")
+        elif mode == "countdown":
+            total_min = self.countdown_hours.value() * 60 + self.countdown_minutes.value()
+            result["countdown_duration_seconds"] = max(60, total_min * 60)
+            result["countdown_restart_delay_seconds"] = self.countdown_restart_delay.value()
         else:  # custom
             total_min = self.custom_hours.value() * 60 + self.custom_minutes.value()
             result["interval_seconds"] = max(60, total_min * 60)

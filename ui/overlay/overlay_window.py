@@ -203,6 +203,72 @@ class OverlayCheckRow(_ColoredRow):
         layout.addWidget(title_lbl, 1)
 
 
+class OverlayCountdownRow(_ColoredRow):
+    """Countdown Timer row (User-Wunsch, 2026-09-07: "ein Countdown Button
+    für das Overlay"): unlike the other Custom Timer modes, which always
+    run purely from wall-clock, this one is only running while manually
+    started -- so it needs an actual Start/Stop control here instead of a
+    plain read-only value like OverlayInfoRow."""
+
+    def __init__(self, color: QColor, title: str, value: str, running: bool, on_toggle):
+        super().__init__(color)
+        # User-reported, 2026-09-07: the Start/Stop button was barely
+        # legible at the plain row height -- this row gets a bit more room
+        # than the standard _ROW_H so a real button actually fits.
+        self.setFixedHeight(_ROW_H + 6)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(_BORDER_W + 6, 0, 8, 0)
+        layout.setSpacing(8)
+
+        # Button - Title - Time (User-Wunsch, 2026-09-07: "den button nach
+        # links machen, danach den Titel und rechts weiterhin die Zeit").
+        self.toggle_btn = QPushButton()
+        self.toggle_btn.setObjectName("OverlayCountdownToggleBtn")
+        self.toggle_btn.setFixedSize(62, 26)
+        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.setProperty("running", running)
+        self.toggle_btn.setText("Stop" if running else "Start")
+        self.toggle_btn.clicked.connect(on_toggle)
+        # User-Wunsch, 2026-09-07: "die Farbe, die man in den Settings des
+        # Counters einstellt, [soll] die Farbe des Buttons darstellen" --
+        # the theme-wide gradient clashed with whichever of the 8 preset
+        # colors this specific timer was actually given. Built per-instance
+        # from that same color (also driving this row's left border) rather
+        # than the shared per-theme QSS, since the source is now per-timer
+        # data, not the app theme.
+        self.toggle_btn.setStyleSheet(self._button_style_for(color))
+        layout.addWidget(self.toggle_btn)
+
+        title_lbl = QLabel(title if len(title) <= 26 else title[:25] + "…")
+        title_lbl.setObjectName("OverlayRowTitle")
+        layout.addWidget(title_lbl, 1)
+
+        self.value_lbl = QLabel(value)
+        self.value_lbl.setObjectName("OverlayRowValue")
+        layout.addWidget(self.value_lbl)
+
+    def set_running(self, running: bool):
+        self.toggle_btn.setText("Stop" if running else "Start")
+        self.toggle_btn.setProperty("running", running)
+        self.toggle_btn.style().unpolish(self.toggle_btn)
+        self.toggle_btn.style().polish(self.toggle_btn)
+
+    @staticmethod
+    def _button_style_for(color: QColor) -> str:
+        light = color.lighter(135)
+        dark = color.darker(140)
+        return (
+            "QPushButton {"
+            f" background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {light.name()}, stop:1 {dark.name()});"
+            " color: white; border: none; border-radius: 9px;"
+            " font-size: 11px; font-weight: 700;"
+            " }"
+            "QPushButton:hover {"
+            f" background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {color.lighter(150).name()}, stop:1 {color.darker(160).name()});"
+            " }"
+        )
+
+
 class _AccordionSection(QWidget):
     """A collapsible section: clickable header (chevron/title/count) + body.
 
@@ -521,7 +587,39 @@ class OverlayWindow(QWidget):
             return None
 
         rows = []
-        for ct in qualifying:
+        # Countdown Timers listed first (User-Wunsch, 2026-09-07) -- they're
+        # the ones needing interaction (Start/Stop), the rest are read-only.
+        # Stable sort keeps everything else in its original relative order.
+        ordered = sorted(
+            enumerate(mw.custom_timers[:8]),
+            key=lambda pair: 0 if pair[1].get("timer_mode") == "countdown" else 1,
+        )
+        for idx, ct in ordered:
+            if not (ct.get("enabled") and ct.get("name")):
+                continue
+            if ct.get("timer_mode") == "countdown":
+                def compute_countdown(ct=ct) -> str:
+                    dur = max(1, ct.get("countdown_duration_seconds", 7200))
+                    if not ct.get("countdown_active"):
+                        return mw._format_custom_countdown(dur, "hh:mm:ss")
+                    delay = max(0, min(60, ct.get("countdown_restart_delay_seconds", 0)))
+                    phase, remaining = mw._get_countdown_phase(
+                        dur, delay, ct.get("countdown_started_at"), datetime.now()
+                    )
+                    text = mw._format_custom_countdown(remaining, "hh:mm:ss")
+                    return f"⟳ {text}" if phase == "delay" else text
+
+                row = OverlayCountdownRow(
+                    QColor(ct.get("color", "#22d3ee")), ct.get("name", "Timer"), compute_countdown(),
+                    running=bool(ct.get("countdown_active")),
+                    on_toggle=lambda _=False, i=idx: self._on_countdown_toggled(i),
+                )
+                self._tick_callbacks.append(
+                    lambda r=row, c=compute_countdown: r.value_lbl.setText(c())
+                )
+                rows.append(row)
+                continue
+
             def compute(ct=ct) -> str:
                 now = datetime.now()
                 mode = ct.get("timer_mode", "hourly")
@@ -538,10 +636,12 @@ class OverlayWindow(QWidget):
                         max(60, ct.get("interval_seconds", 3600)), ct.get("start_time", "00:00"),
                     )
                     return mw.format_reset_countdown((next_t - now).total_seconds())
-                next_t = mw._get_next_custom_timer_time(ct.get("interval_minutes", 60))
+                next_t = mw._get_next_custom_timer_time_seconds(
+                    max(60, ct.get("interval_minutes", 60) * 60), ct.get("start_time", "00:00"),
+                )
                 return mw._format_custom_countdown((next_t - now).total_seconds(), "hh:mm:ss")
 
-            row = OverlayInfoRow(CUSTOM_TIMER_COLOR, ct.get("name", "Timer"), compute())
+            row = OverlayInfoRow(QColor(ct.get("color", "#22d3ee")), ct.get("name", "Timer"), compute())
             self._tick_callbacks.append(lambda r=row, c=compute: r.value_lbl.setText(c()))
             rows.append(row)
 
@@ -598,6 +698,12 @@ class OverlayWindow(QWidget):
     def _on_equip_priority_checked(self, section_key: str):
         self.main_window.advance_equip_priority(section_key)
         self.refresh()
+
+    def _on_countdown_toggled(self, idx: int):
+        # toggle_countdown_timer() already refreshes the overlay itself
+        # (also needed for callers other than this button, e.g. a future
+        # Start/Stop control on the Timers page), so no self.refresh() here.
+        self.main_window.toggle_countdown_timer(idx)
 
     # populate
 

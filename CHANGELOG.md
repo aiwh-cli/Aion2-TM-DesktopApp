@@ -40,6 +40,27 @@ These features are **not** part of an official update yet and are still under ac
 
 ---
 
+# Version 1.9.6
+
+Release Date: 2026-09-07
+
+## ✨ New Features
+
+- **Custom Timer: new "Countdown" mode.** Set a duration, then start/stop it directly from a dedicated button in the overlay — plays your chosen notification sound when it runs out, with an optional 0–60 second auto-restart delay before it starts over. Shown first in the overlay's Custom Timer list, colored by that timer's own configured color.
+- **Templates: a fresh install now starts with a real set of Shopping and Task template entries** instead of an empty list, in all three languages.
+
+## 🎨 UI Changes
+
+- **Timers page: the "+" icon (which actually opened the whole Custom Timer manager, not just "add") is now a clearly labeled "Manage" button.**
+- **The active nav tab, and various buttons across Settings/Templates/Tasks/Shopping, used the same fixed cyan/purple gradient on every theme.** They now match each theme's own accent color.
+
+## 🐛 Bug Fixes
+
+- **Custom Timer: Hourly mode had no configurable start time** — it always anchored to midnight regardless of when you actually wanted it to begin counting. Now has its own Start field, same as Custom mode.
+- **The Custom Timer configuration and management dialogs stayed German regardless of your selected language.** Fully localized now (English/Deutsch/Русский).
+
+---
+
 # Version 1.9.5
 
 Release Date: 2026-09-06

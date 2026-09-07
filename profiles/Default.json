@@ -574,7 +574,7 @@
             "location": "Raid",
             "schedule": "weekly",
             "priority": "high",
-            "is_general": false,
+            "is_general": true,
             "id": "d0000101-e5f6-7890-abcd-ef1234567800"
         },
         {

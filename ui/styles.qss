@@ -814,6 +814,123 @@ QWidget[theme="void"] #taskCard[selected="true"] {
     background-color: rgba(192, 132, 252, 0.1);
 }
 
+/* Active/gradient buttons per theme (User-reported, 2026-09-07: every
+   button sharing the "ToDo" nav tab's cyan/purple gradient -- primary
+   action buttons, Settings sidebar/theme toggles, Tasks/Shopping/
+   Templates sort+filter pills, the minute toggle -- stayed cyan/purple
+   on every theme, clashing outside Abyss). Each pair reuses that
+   theme's own accent color from the card borders/selected states above
+   instead of a new palette, so these still read as "this theme". Abyss
+   (the default, unscoped rules further up) keeps its original
+   cyan/purple everywhere. */
+QWidget[theme="inferno"] #tabButton[active="true"],
+QWidget[theme="inferno"] #topTabButton[active="true"],
+QWidget[theme="inferno"] #primaryButton,
+QWidget[theme="inferno"] #minuteToggleButton:checked,
+QWidget[theme="inferno"] #settingsSidebarButton:checked,
+QWidget[theme="inferno"] #themeToggleButton:checked,
+QWidget[theme="inferno"] #sortButton:checked,
+QWidget[theme="inferno"] #filterButton[active="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fb923c, stop:1 #dc2626);
+}
+
+QWidget[theme="inferno"] #primaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f97316, stop:1 #b91c1c);
+}
+
+QWidget[theme="emerald"] #tabButton[active="true"],
+QWidget[theme="emerald"] #topTabButton[active="true"],
+QWidget[theme="emerald"] #primaryButton,
+QWidget[theme="emerald"] #minuteToggleButton:checked,
+QWidget[theme="emerald"] #settingsSidebarButton:checked,
+QWidget[theme="emerald"] #themeToggleButton:checked,
+QWidget[theme="emerald"] #sortButton:checked,
+QWidget[theme="emerald"] #filterButton[active="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #34d399, stop:1 #0d9488);
+}
+
+QWidget[theme="emerald"] #primaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #0f766e);
+}
+
+QWidget[theme="frostbite"] #tabButton[active="true"],
+QWidget[theme="frostbite"] #topTabButton[active="true"],
+QWidget[theme="frostbite"] #primaryButton,
+QWidget[theme="frostbite"] #minuteToggleButton:checked,
+QWidget[theme="frostbite"] #settingsSidebarButton:checked,
+QWidget[theme="frostbite"] #themeToggleButton:checked,
+QWidget[theme="frostbite"] #sortButton:checked,
+QWidget[theme="frostbite"] #filterButton[active="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #93c5fd, stop:1 #2563eb);
+}
+
+QWidget[theme="frostbite"] #primaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #60a5fa, stop:1 #1d4ed8);
+}
+
+QWidget[theme="obsidian"] #tabButton[active="true"],
+QWidget[theme="obsidian"] #topTabButton[active="true"],
+QWidget[theme="obsidian"] #primaryButton,
+QWidget[theme="obsidian"] #minuteToggleButton:checked,
+QWidget[theme="obsidian"] #settingsSidebarButton:checked,
+QWidget[theme="obsidian"] #themeToggleButton:checked,
+QWidget[theme="obsidian"] #sortButton:checked,
+QWidget[theme="obsidian"] #filterButton[active="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fcd34d, stop:1 #b45309);
+}
+
+QWidget[theme="obsidian"] #primaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fbbf24, stop:1 #92400e);
+}
+
+QWidget[theme="void"] #tabButton[active="true"],
+QWidget[theme="void"] #topTabButton[active="true"],
+QWidget[theme="void"] #primaryButton,
+QWidget[theme="void"] #minuteToggleButton:checked,
+QWidget[theme="void"] #settingsSidebarButton:checked,
+QWidget[theme="void"] #themeToggleButton:checked,
+QWidget[theme="void"] #sortButton:checked,
+QWidget[theme="void"] #filterButton[active="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e879f9, stop:1 #7c3aed);
+}
+
+QWidget[theme="void"] #primaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d946ef, stop:1 #6d28d9);
+}
+
+/* #scheduleToggleBtn:checked keeps its own subtler translucent-tint
+   treatment (unlike the bold gradients above) -- just recolored to
+   each theme's accent instead of the fixed indigo. */
+QWidget[theme="inferno"] #scheduleToggleBtn:checked {
+    background-color: rgba(249, 115, 22, 0.18);
+    color: #fb923c;
+    border: 1px solid rgba(249, 115, 22, 0.6);
+}
+
+QWidget[theme="emerald"] #scheduleToggleBtn:checked {
+    background-color: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.6);
+}
+
+QWidget[theme="frostbite"] #scheduleToggleBtn:checked {
+    background-color: rgba(96, 165, 250, 0.18);
+    color: #93c5fd;
+    border: 1px solid rgba(96, 165, 250, 0.6);
+}
+
+QWidget[theme="obsidian"] #scheduleToggleBtn:checked {
+    background-color: rgba(251, 191, 36, 0.18);
+    color: #fcd34d;
+    border: 1px solid rgba(251, 191, 36, 0.6);
+}
+
+QWidget[theme="void"] #scheduleToggleBtn:checked {
+    background-color: rgba(192, 132, 252, 0.18);
+    color: #d8b4fe;
+    border: 1px solid rgba(192, 132, 252, 0.6);
+}
+
 #settingsThemeContainer {
     background-color: rgba(30, 41, 59, 0.75);
     border: 1px solid rgba(100, 116, 139, 0.45);
@@ -2421,3 +2538,10 @@ QToolTip {
     border-radius: 8px;
     padding: 1px 6px;
 }
+
+/* Countdown Timer's Start/Stop button. User-Wunsch, 2026-09-07: "die
+   Farbe, die man in den Settings des Counters einstellt, [soll] die
+   Farbe des Buttons darstellen" -- built per-instance from that same
+   per-timer color in OverlayCountdownRow._button_style_for() instead of
+   a shared theme-wide rule, since the color source is per-timer data,
+   not the app theme. No selector needed here. */

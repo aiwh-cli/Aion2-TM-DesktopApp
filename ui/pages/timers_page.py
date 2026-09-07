@@ -49,8 +49,13 @@ class TimersPage(QWidget):
         title_col.addWidget(self.subtitle_label)
         header_row.addLayout(title_col, 1)
 
-        self.manage_timers_btn = QPushButton("＋")
-        self.manage_timers_btn.setObjectName("pageIconButton")
+        # User-reported, 2026-09-07: the plain "+" icon read as "add a
+        # timer" when it actually opens the whole Custom Timer manager
+        # (add/edit/remove/categories) -- a labeled button says what it
+        # does instead of implying just one of its several actions.
+        self.manage_timers_btn = QPushButton("Verwalten")
+        self.manage_timers_btn.setObjectName("secondaryButton")
+        self.manage_timers_btn.setFixedHeight(40)
         self.manage_timers_btn.setToolTip("Custom Timer verwalten")
         self.manage_timers_btn.clicked.connect(self.manage_timers_requested.emit)
 
@@ -180,6 +185,7 @@ class TimersPage(QWidget):
     def update_language(self, language: str, tr_func):
         self.title_label.setText(tr_func(language, "timers"))
         self.subtitle_label.setText(tr_func(language, "timers_subtitle"))
+        self.manage_timers_btn.setText(tr_func(language, "timers_manage"))
         self.daily_reset_card.title_label.setText(tr_func(language, "daily_reset").upper())
         self.weekly_reset_card.title_label.setText(tr_func(language, "weekly_reset").upper())
         self.season_timer_card.title_label.setText("SEASON")
