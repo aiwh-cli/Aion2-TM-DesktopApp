@@ -474,16 +474,6 @@
             "price": "150000",
             "currency": "kinah",
             "id": "ru000002-0000-0000-0000-000000000042"
-        },
-        {
-            "title": "Skin",
-            "location": "Abyss",
-            "schedule": "daily",
-            "priority": "middle",
-            "is_general": false,
-            "price": "1000",
-            "currency": "abyss",
-            "id": "ru000002-0000-0000-0000-000000000043"
         }
     ],
     "task_templates": [
