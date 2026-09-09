@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from ui.widgets.shopping_card import format_currency_price
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QRegularExpressionValidator, QIntValidator
 from PySide6.QtCore import QRegularExpression
@@ -321,8 +322,7 @@ class TemplateDialog(QDialog):
         title_lbl.setObjectName("taskTitle")
         currency = tmpl.get("currency", "kinah")
         price_raw = tmpl.get("price", "0")
-        price_display = f"{price_raw} AP" if currency == "abyss" else f"{price_raw}K"
-        price_lbl = QLabel(price_display)
+        price_lbl = QLabel(format_currency_price(price_raw, currency))
         price_lbl.setObjectName("taskDescription")
         title_row.addWidget(title_lbl)
         title_row.addSpacing(8)
@@ -554,13 +554,15 @@ class TemplateDialog(QDialog):
                 data["character"] = self.templates[index].get("character", "")
                 data["_from_import"] = self.templates[index].get("_from_import", False)
                 self.templates[index] = data
+                self._sync_standard_template("shopping", data)
                 self._selected_shop_index = None
                 self._update_shop_add_btn()
                 self._rebuild_shop_list()
 
     def _delete_shop_template(self, index: int):
         if 0 <= index < len(self.templates):
-            self.templates.pop(index)
+            removed = self.templates.pop(index)
+            self._remove_from_standard_templates("shopping", removed.get("id"))
             if self._selected_shop_index == index:
                 self._selected_shop_index = None
                 self._update_shop_add_btn()
@@ -665,13 +667,55 @@ class TemplateDialog(QDialog):
                 data["character"] = self.task_templates[index].get("character", "")
                 data["_from_import"] = self.task_templates[index].get("_from_import", False)
                 self.task_templates[index] = data
+                self._sync_standard_template("tasks", data)
                 self._selected_task_index = None
                 self._update_task_add_btn()
                 self._rebuild_task_list()
 
+    def _sync_standard_template(self, kind: str, updated: dict):
+        """Keeps a Standard Template entry in sync when its SOURCE template
+        gets edited (User-reported, 2026-09-09: "wenn in den Templates ein
+        Eintrag geändert wird, ist dieser in den Standard Templates noch
+        unverändert") -- Standard Templates are stored as independent
+        snapshot copies (see __init__'s `[dict(t) for t in ...]`), so
+        editing the real template never touched them on its own. Matched
+        by "source_id" (NOT "id" -- a Standard Template entry always gets
+        its OWN fresh id when added via the "Standards verwalten" picker,
+        see _StandardTemplatesDialog._on_add, so matching on "id" silently
+        never fired for any real, picker-added entry) -- a no-op if this
+        template was never added to Standard Templates in the first place.
+        Keeps the Standard entry's own "id"/"source_id" intact across the
+        overwrite so it stays findable next time."""
+        tid = updated.get("id")
+        if not tid:
+            return
+        for i, std in enumerate(self.standard_templates.get(kind, [])):
+            if std.get("source_id") == tid:
+                data = dict(updated)
+                data["id"] = std.get("id", data.get("id"))
+                data["source_id"] = tid
+                self.standard_templates[kind][i] = data
+                break
+
+    def _remove_from_standard_templates(self, kind: str, tid: str):
+        """Companion to _sync_standard_template above -- removes a Standard
+        Template entry when its SOURCE template is deleted from the normal
+        Shopping/Tasks list (User-reported, 2026-09-09: "Falls Templates aus
+        der normalen Templates Liste entfernt werden, sollten diese auch aus
+        den Standards entfernt werden"). Same "source_id" matching, same
+        reasoning -- a no-op if this template was never added to Standard
+        Templates."""
+        if not tid:
+            return
+        self.standard_templates[kind] = [
+            std for std in self.standard_templates.get(kind, [])
+            if std.get("source_id") != tid
+        ]
+
     def _delete_task_template(self, index: int):
         if 0 <= index < len(self.task_templates):
-            self.task_templates.pop(index)
+            removed = self.task_templates.pop(index)
+            self._remove_from_standard_templates("tasks", removed.get("id"))
             if self._selected_task_index == index:
                 self._selected_task_index = None
                 self._update_task_add_btn()
@@ -1027,7 +1071,13 @@ class _StandardTemplatesDialog(QDialog):
             # A COPY with its own new id, not a reference -- editing it
             # afterward via _on_edit must never touch the source template
             # in the main Shopping/Tasks list ("...und anpassen können").
+            # source_id keeps a separate link back to that source template's
+            # OWN id, so a later edit/delete of it (via _sync_standard_
+            # template/_remove_from_standard_templates below) can still find
+            # this copy -- matching on "id" itself never worked for entries
+            # added this way, since "id" here is always a fresh uuid4().
             item = dict(tmpl)
+            item["source_id"] = tmpl.get("id", "")
             item["id"] = str(uuid4())
             item["is_general"] = False
             if self._is_shop:
@@ -1046,6 +1096,7 @@ class _StandardTemplatesDialog(QDialog):
         if dlg.exec():
             data = dlg.get_data()
             data["id"] = self._items[index].get("id", str(uuid4()))
+            data["source_id"] = self._items[index].get("source_id", "")
             if self._is_shop:
                 data["amount"] = self._items[index].get("amount", "1")
             self._items[index] = data
@@ -1147,6 +1198,33 @@ class _TemplateEditDialog(QDialog):
         name_row.addWidget(self._location, 1)
         layout.addLayout(name_row)
 
+        # ── Description accordion, tasks only, collapsed by default ──────────
+        # (User-Wunsch, 2026-09-09: "hier bitte noch ein accordion Button
+        # einfügen, der ein Beschreibungsfeld zeigt, Standard ist dies aber
+        # zugeklappt") -- ShoppingCard has no description concept to show it
+        # in (unlike TaskCard's own desc_label), so this stays task-only
+        # rather than adding write-only dead data to shop templates.
+        self._description = None
+        if task_mode:
+            self._desc_toggle_btn = QPushButton("▸ " + self._t("task_description_toggle"))
+            self._desc_toggle_btn.setObjectName("linkButton")
+            self._desc_toggle_btn.setFlat(True)
+            self._desc_toggle_btn.setCursor(Qt.PointingHandCursor)
+            self._desc_toggle_btn.setCheckable(True)
+            self._desc_toggle_btn.clicked.connect(self._toggle_description)
+            layout.addWidget(self._desc_toggle_btn, 0, Qt.AlignLeft)
+
+            self._description = QLineEdit(data.get("description", ""))
+            self._description.setPlaceholderText(self._t("placeholder_task_description"))
+            self._description.setVisible(False)
+            layout.addWidget(self._description)
+
+            # Already has a description (editing an existing entry) -> start
+            # expanded so it's not silently hidden from view.
+            if data.get("description", "").strip():
+                self._desc_toggle_btn.setChecked(True)
+                self._toggle_description()
+
         # ── Row 3: Currency + Price (shopping only) ───────────────────────────
         if not task_mode:
             self._kinah_btn = self._toggle("Kinah", "currencyToggleKinah")
@@ -1202,6 +1280,12 @@ class _TemplateEditDialog(QDialog):
         btn.setCheckable(True)
         return btn
 
+    def _toggle_description(self):
+        expanded = self._desc_toggle_btn.isChecked()
+        self._description.setVisible(expanded)
+        arrow = "▾ " if expanded else "▸ "
+        self._desc_toggle_btn.setText(arrow + self._t("task_description_toggle"))
+
     def _open_import_from_db(self):
         if not self._item_picker_callback:
             return
@@ -1247,6 +1331,8 @@ class _TemplateEditDialog(QDialog):
         if not self._task_mode:
             d["price"] = self._price.text().strip() or "0"
             d["currency"] = self._get_currency()
+        if self._description is not None:
+            d["description"] = self._description.text().strip()
         return d
 
 

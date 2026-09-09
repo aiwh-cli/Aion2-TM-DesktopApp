@@ -47,15 +47,22 @@ class FullViewImportDialog(QDialog):
     knowledge of task_lists/TaskCard/profile saving."""
 
     def __init__(self, characters: list, plan_callback, apply_callback,
-                 language: str = "en", tr_func=None, parent=None):
+                 language: str = "en", tr_func=None, parent=None,
+                 create_character_callback=None):
         super().__init__(parent)
         self._characters = list(characters or [])
         self._plan_callback = plan_callback
         self._apply_callback = apply_callback
+        # User-Wunsch, 2026-09-08: "bei jedem Charakter, der nicht
+        # existiert, den Benutzer fragen, ob dieser Charakter erstellt
+        # werden soll" -- optional so this dialog still works (just
+        # without the offer) if a caller doesn't pass one.
+        self._create_character_callback = create_character_callback
         self._language = language
         self._tr = tr_func or (lambda _l, k, **kw: k)
         self._parsed: ParsedImport | None = None
         self._plan: list[dict] = []
+        self._last_path: str | None = None
 
         self.setWindowTitle(self._t("full_view_import_title"))
         self.setMinimumSize(640, 520)
@@ -125,20 +132,60 @@ class FullViewImportDialog(QDialog):
         )
         if not path:
             return
-        try:
-            if path.lower().endswith(".xlsx"):
-                parsed = parse_full_view_xlsx(path, self._characters)
-            else:
-                text = Path(path).read_text(encoding="utf-8-sig")
-                parsed = parse_full_view_csv(text, self._characters)
-        except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
-            QMessageBox.warning(self, self._t("full_view_import_title"),
-                                 self._t("full_view_import_parse_error", error=str(exc)))
+        self._last_path = path
+        parsed = self._parse_file(path)
+        if parsed is None:
             return
 
         self._parsed = parsed
         self._file_label.setText(Path(path).name)
+        self._offer_create_missing_characters()
         self._rebuild_preview()
+
+    def _parse_file(self, path: str) -> ParsedImport | None:
+        try:
+            if path.lower().endswith(".xlsx"):
+                return parse_full_view_xlsx(path, self._characters)
+            text = Path(path).read_text(encoding="utf-8-sig")
+            return parse_full_view_csv(text, self._characters)
+        except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
+            QMessageBox.warning(self, self._t("full_view_import_title"),
+                                 self._t("full_view_import_parse_error", error=str(exc)))
+            return None
+
+    def _offer_create_missing_characters(self):
+        """Asks, per unmatched character name, whether to create it (User-
+        Wunsch, 2026-09-08) -- previously such rows were just silently
+        skipped and reported in the passive warning label below. Any name
+        the user confirms gets created via the same callback
+        CharacterManagerDialog uses (MainWindow._add_character), then the
+        file is RE-PARSED (self._characters now includes it) so those
+        rows go from skipped to matched instead of staying dropped for
+        the rest of this dialog's lifetime."""
+        if not self._create_character_callback or self._parsed is None:
+            return
+        if not self._parsed.unmatched_characters:
+            return
+
+        any_created = False
+        for name in list(self._parsed.unmatched_characters):
+            answer = QMessageBox.question(
+                self, self._t("char_add_new_title"),
+                self._t("full_view_import_create_character_text", name=name),
+            )
+            if answer != QMessageBox.Yes:
+                continue
+            ok, error_key = self._create_character_callback(name)
+            if ok:
+                self._characters.append(name)
+                any_created = True
+            elif error_key:
+                QMessageBox.warning(self, self._t("char_add_new_title"), self._t(error_key))
+
+        if any_created and self._last_path:
+            reparsed = self._parse_file(self._last_path)
+            if reparsed is not None:
+                self._parsed = reparsed
 
     def _rebuild_preview(self):
         if self._parsed is None:

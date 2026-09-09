@@ -200,6 +200,12 @@ QLineEdit:focus {
     border: 1px solid rgba(34, 211, 238, 0.8);
 }
 
+QLineEdit:disabled {
+    color: #64748b;
+    background-color: rgba(15, 23, 42, 0.4);
+    border-color: rgba(100, 116, 139, 0.25);
+}
+
 #primaryButton {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #06b6d4, stop:1 #a855f7);
     color: white;
@@ -830,6 +836,7 @@ QWidget[theme="inferno"] #minuteToggleButton:checked,
 QWidget[theme="inferno"] #settingsSidebarButton:checked,
 QWidget[theme="inferno"] #themeToggleButton:checked,
 QWidget[theme="inferno"] #sortButton:checked,
+QWidget[theme="inferno"] #templateSourceTab:checked,
 QWidget[theme="inferno"] #filterButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fb923c, stop:1 #dc2626);
 }
@@ -845,6 +852,7 @@ QWidget[theme="emerald"] #minuteToggleButton:checked,
 QWidget[theme="emerald"] #settingsSidebarButton:checked,
 QWidget[theme="emerald"] #themeToggleButton:checked,
 QWidget[theme="emerald"] #sortButton:checked,
+QWidget[theme="emerald"] #templateSourceTab:checked,
 QWidget[theme="emerald"] #filterButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #34d399, stop:1 #0d9488);
 }
@@ -860,6 +868,7 @@ QWidget[theme="frostbite"] #minuteToggleButton:checked,
 QWidget[theme="frostbite"] #settingsSidebarButton:checked,
 QWidget[theme="frostbite"] #themeToggleButton:checked,
 QWidget[theme="frostbite"] #sortButton:checked,
+QWidget[theme="frostbite"] #templateSourceTab:checked,
 QWidget[theme="frostbite"] #filterButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #93c5fd, stop:1 #2563eb);
 }
@@ -875,6 +884,7 @@ QWidget[theme="obsidian"] #minuteToggleButton:checked,
 QWidget[theme="obsidian"] #settingsSidebarButton:checked,
 QWidget[theme="obsidian"] #themeToggleButton:checked,
 QWidget[theme="obsidian"] #sortButton:checked,
+QWidget[theme="obsidian"] #templateSourceTab:checked,
 QWidget[theme="obsidian"] #filterButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fcd34d, stop:1 #b45309);
 }
@@ -890,6 +900,7 @@ QWidget[theme="void"] #minuteToggleButton:checked,
 QWidget[theme="void"] #settingsSidebarButton:checked,
 QWidget[theme="void"] #themeToggleButton:checked,
 QWidget[theme="void"] #sortButton:checked,
+QWidget[theme="void"] #templateSourceTab:checked,
 QWidget[theme="void"] #filterButton[active="true"] {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e879f9, stop:1 #7c3aed);
 }
@@ -929,6 +940,50 @@ QWidget[theme="void"] #scheduleToggleBtn:checked {
     background-color: rgba(192, 132, 252, 0.18);
     color: #d8b4fe;
     border: 1px solid rgba(192, 132, 252, 0.6);
+}
+
+/* Global QCheckBox indicator (User-reported, 2026-09-08, screenshot: the
+   Templates dialog's "quest appears automatically" checkbox was "fast
+   nicht sichtbar" -- there was no app-wide QCheckBox::indicator rule at
+   all anywhere, so every checkbox in the app fell back to Fusion's own
+   default indicator, whose thin palette-based border is hard to see
+   against this app's very dark backgrounds). Checked state reuses the
+   same per-theme accent gradient as the other "active" controls. */
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.75);
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.9);
+}
+
+QCheckBox::indicator:hover {
+    border: 1px solid rgba(34, 211, 238, 0.9);
+}
+
+QCheckBox::indicator:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #06b6d4, stop:1 #a855f7);
+    border: 1px solid transparent;
+}
+
+QWidget[theme="inferno"] QCheckBox::indicator:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fb923c, stop:1 #dc2626);
+}
+
+QWidget[theme="emerald"] QCheckBox::indicator:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #34d399, stop:1 #0d9488);
+}
+
+QWidget[theme="frostbite"] QCheckBox::indicator:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #93c5fd, stop:1 #2563eb);
+}
+
+QWidget[theme="obsidian"] QCheckBox::indicator:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fcd34d, stop:1 #b45309);
+}
+
+QWidget[theme="void"] QCheckBox::indicator:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e879f9, stop:1 #7c3aed);
 }
 
 #settingsThemeContainer {
@@ -1100,6 +1155,12 @@ QComboBox#priorityInput {
     border: 1px solid rgba(34, 211, 238, 0.7);
 }
 
+#priorityInput:disabled {
+    color: #64748b;
+    background-color: rgba(15, 23, 42, 0.4);
+    border-color: rgba(100, 116, 139, 0.25);
+}
+
 #priorityInput QLineEdit {
     background: transparent;
     color: #e2e8f0;
@@ -1229,6 +1290,16 @@ QComboBox#priorityInput {
     font-weight: 800;
 }
 
+#missedBadge {
+    background-color: rgba(248, 113, 113, 0.18);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.5);
+    border-radius: 8px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
 #scheduleDaily {
     color: #22d3ee;
     background-color: rgba(6, 182, 212, 0.12);
@@ -1299,6 +1370,17 @@ QComboBox#priorityInput {
     border: 1px solid rgba(99, 102, 241, 0.6);
 }
 
+/* Locked reference-only state while a Standard Template is picked (User-
+   Wunsch, 2026-09-09: "dort zählen die Prios nicht, sowie der Schedule") --
+   still shows which schedule/priority the entry carries, just muted and
+   non-interactive instead of looking like a live, editable choice. */
+#scheduleToggleBtn:disabled,
+#scheduleToggleBtn:checked:disabled {
+    background-color: rgba(51, 65, 85, 0.25);
+    color: #475569;
+    border-color: rgba(100, 116, 139, 0.2);
+}
+
 #priorityToggleLow {
     background-color: rgba(15, 23, 42, 0.85);
     color: #94a3b8;
@@ -1357,6 +1439,27 @@ QComboBox#priorityInput {
 #templateButton:hover {
     background-color: rgba(6, 182, 212, 0.2);
     border-color: rgba(6, 182, 212, 0.75);
+}
+
+/* "Templates" / "Standard Templates" folder tabs sitting flush on top of
+   the add-row (User-Wunsch, 2026-09-09: real tabs above the whole row,
+   "wie wärs damit?"). Top corners only + no bottom border so the checked
+   tab visually merges into #addPanel's top edge right beneath it. */
+#templateSourceTab {
+    background-color: rgba(17, 24, 39, 0.9);
+    color: #94a3b8;
+    border: 1px solid rgba(100, 116, 139, 0.4);
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    padding: 7px 18px;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+#templateSourceTab:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #06b6d4, stop:1 #a855f7);
+    color: #04121a;
+    border-color: transparent;
 }
 
 #currencyToggleKinah {
@@ -1422,16 +1525,6 @@ QComboBox#priorityInput {
     );
     color: white;
     border: none;
-}
-
-#shoppingAmount {
-    color: #e2e8f0;
-    font-size: 14px;
-    font-weight: 800;
-    min-width: 34px;
-    max-width: 44px;
-    qproperty-alignment: AlignTop;
-    padding-top: 2px;
 }
 
 QToolTip {
@@ -2337,15 +2430,18 @@ QToolTip {
 
 #ProgressDoneIcon { color: #34d399; font-size: 16px; font-weight: 700; }
 #ProgressOpenIcon { color: #fbbf24; font-size: 16px; font-weight: 700; }
+#ProgressMissedIcon { color: #f87171; font-size: 16px; font-weight: 700; }
 #ProgressTotalIcon { color: #22d3ee; font-size: 16px; font-weight: 700; }
 
-#ProgressDoneVal  { color: #34d399; font-size: 24px; font-weight: 800; }
-#ProgressOpenVal  { color: #fbbf24; font-size: 24px; font-weight: 800; }
-#ProgressTotalVal { color: #22d3ee; font-size: 24px; font-weight: 800; }
+#ProgressDoneVal   { color: #34d399; font-size: 24px; font-weight: 800; }
+#ProgressOpenVal   { color: #fbbf24; font-size: 24px; font-weight: 800; }
+#ProgressMissedVal { color: #f87171; font-size: 24px; font-weight: 800; }
+#ProgressTotalVal  { color: #22d3ee; font-size: 24px; font-weight: 800; }
 
-#ProgressDoneSub  { color: #34d399; font-size: 11px; font-weight: 600; opacity: 0.7; }
-#ProgressOpenSub  { color: #fbbf24; font-size: 11px; font-weight: 600; opacity: 0.7; }
-#ProgressTotalSub { color: #22d3ee; font-size: 11px; font-weight: 600; opacity: 0.7; }
+#ProgressDoneSub   { color: #34d399; font-size: 11px; font-weight: 600; opacity: 0.7; }
+#ProgressOpenSub   { color: #fbbf24; font-size: 11px; font-weight: 600; opacity: 0.7; }
+#ProgressMissedSub { color: #f87171; font-size: 11px; font-weight: 600; opacity: 0.7; }
+#ProgressTotalSub  { color: #22d3ee; font-size: 11px; font-weight: 600; opacity: 0.7; }
 
 #ProgressExtra {
     color: #cbd5e1;
@@ -2406,6 +2502,27 @@ QToolTip {
     font-size: 16px;
     padding: 0px;
     border-radius: 4px;
+}
+
+/* User-reported, 2026-09-09: the "Char" filter button used the plain
+   single-glyph icon style (#OverlayIconBtn -- meant for "⚙"/"✕"), which
+   made readable word-text look like unstyled floating text, no button
+   shape at all. Own glowing cyan pill instead, same accent the app
+   already uses as its signature color elsewhere. */
+#OverlayCharBtn {
+    background: rgba(34, 211, 238, 0.12);
+    border: 1px solid rgba(34, 211, 238, 0.75);
+    border-radius: 6px;
+    color: #22d3ee;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 10px;
+}
+
+#OverlayCharBtn:hover {
+    background: rgba(34, 211, 238, 0.22);
+    border: 1px solid #22d3ee;
+    color: #67e8f9;
 }
 
 #OverlayIconBtn:hover {

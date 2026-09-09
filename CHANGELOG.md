@@ -40,6 +40,36 @@ These features are **not** part of an official update yet and are still under ac
 
 ---
 
+# Version 1.9.7
+
+## ✨ New Features
+
+- **Tasks/Shopping toolbar: assign Standard Templates directly to a character.** New "Templates / ★ Standard Templates" tabs above the add-row — switch to Standards and hit "+ Add" to apply every Standard Template your selected character doesn't already have, in one click, instead of only being able to seed them at character creation.
+- **Standard Templates now stay in sync with your Templates list.** Editing or deleting an entry in Templates now updates or removes the matching Standard Template automatically, instead of leaving a stale, disconnected copy behind.
+- **Full View Import can now create missing characters on the fly.** Importing a file that references a character you haven't added yet offers to create it right there instead of silently skipping their entries.
+- **Add/Edit Task now has an optional Description field**, collapsed behind a small toggle by default so it stays out of the way until you need it.
+- **Overlay: new "Char" filter button** to show only one character's tasks in the floating overlay, next to the existing section toggles.
+- **Individual "Missed" tag on cards.** Previously only a total count existed; now each missed Task/Shopping card is tagged directly, and the tag correctly disappears once you check it off.
+
+## 🎨 UI Changes
+
+- **Task/Shopping amount now shows next to the title** (e.g. "Commands (5x)") instead of not being reflected anywhere after you set it.
+- Shopping cards' layout now matches Task cards (schedule/character tags moved below the title).
+- "SC" relabeled to "Coins" in price displays (the compact currency-selector buttons keep "SC" for space).
+- Removed the Twitch button from the About page.
+- Removed the Flow Map's "Liste bearbeiten" character item editor, now that the toolbar above handles assigning templates to a character directly.
+
+## 🐛 Bug Fixes
+
+- **Task amount changes didn't apply at all** — editing a task's amount silently did nothing.
+- **Switching between the Tasks and Shopping tabs could spawn stray, empty windows** showing a single leftover card.
+- **Checking off a "missed" card didn't clear its missed status** — it stayed flagged even after being completed.
+- **Wings picker could show "0 results" after switching to row view.**
+- A handful of German/Russian item and task template names had been incorrectly translated on a fresh install — game item names are now left in their original form, matching how the rest of the app already treats them.
+- Fixed a display bug where an item's quantity could appear doubled in the overlay's task list.
+
+---
+
 # Version 1.9.6
 
 Release Date: 2026-09-07

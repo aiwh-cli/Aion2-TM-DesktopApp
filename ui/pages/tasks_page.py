@@ -21,18 +21,25 @@ class TaskProgressBar(QFrame):
         stats_row = QHBoxLayout()
         stats_row.setSpacing(0)
 
-        self._done_val  = QLabel("0")
-        self._open_val  = QLabel("0")
-        self._total_val = QLabel("0")
-        self._pct_val   = QLabel("0%")
+        self._done_val   = QLabel("0")
+        self._open_val   = QLabel("0")
+        self._missed_val = QLabel("0")
+        self._total_val  = QLabel("0")
+        self._pct_val    = QLabel("0%")
         self._extra_lbl = QLabel("")
         self._extra_lbl.setObjectName("ProgressExtra")
 
         self._sub_labels = []
+        # Missed reuses the SAME "still-incomplete daily card at the last
+        # reset" rule the exported Full View page's own "Missed (Yesterday)"
+        # tile already tracks (MainWindow._record_missed_daily_activities)
+        # (User-Wunsch, 2026-09-07: "Genauso die Regel dahinter bauen") --
+        # just surfaced live in the app itself now too, not only on export.
         for val, icon, label, val_obj, icon_obj, sub_obj in [
-            (self._done_val,  "✓", "done",      "ProgressDoneVal",  "ProgressDoneIcon",  "ProgressDoneSub"),
-            (self._open_val,  "○", "remaining", "ProgressOpenVal",  "ProgressOpenIcon",  "ProgressOpenSub"),
-            (self._total_val, "Σ", "total",     "ProgressTotalVal", "ProgressTotalIcon", "ProgressTotalSub"),
+            (self._done_val,   "✓", "done",      "ProgressDoneVal",   "ProgressDoneIcon",   "ProgressDoneSub"),
+            (self._open_val,   "○", "remaining", "ProgressOpenVal",   "ProgressOpenIcon",   "ProgressOpenSub"),
+            (self._missed_val, "!", "missed",    "ProgressMissedVal", "ProgressMissedIcon", "ProgressMissedSub"),
+            (self._total_val,  "Σ", "total",     "ProgressTotalVal",  "ProgressTotalIcon",  "ProgressTotalSub"),
         ]:
             icon_lbl = QLabel(icon)
             icon_lbl.setObjectName(icon_obj)
@@ -79,18 +86,19 @@ class TaskProgressBar(QFrame):
         self._bar.setFixedHeight(8)
         outer.addWidget(self._bar)
 
-    def update_stats(self, total: int, done: int, open_count: int):
+    def update_stats(self, total: int, done: int, open_count: int, missed_count: int = 0):
         self._done = done
         self._total = total
         pct = int(done / total * 100) if total > 0 else 0
         self._done_val.setText(str(done))
         self._open_val.setText(str(open_count))
+        self._missed_val.setText(str(missed_count))
         self._total_val.setText(str(total))
         self._pct_val.setText(f"{pct}%")
         self.update()
 
     def update_language(self, language: str, tr_func):
-        for sub, key in zip(self._sub_labels, ["done", "remaining", "total"]):
+        for sub, key in zip(self._sub_labels, ["done", "remaining", "missed", "total"]):
             sub.setText(tr_func(language, key))
         self._pct_sub.setText(tr_func(language, "progress"))
 
@@ -123,6 +131,13 @@ class TaskProgressBar(QFrame):
 class TasksPage(QWidget):
     tab_changed = Signal(str)
     task_add_requested = Signal(dict)
+    # "+Add" while the Standards tab is active (User-Wunsch, 2026-09-09:
+    # "Falls Templates bereits zugewiesen sind, sollen alle templates aus
+    # dem Standard hinzugefügt werden, die nicht bereits zugewiesen sind")
+    # -- carries just the target character; MainWindow owns the actual
+    # "which titles does this character already have" check, since only it
+    # can see the live task/shopping lists.
+    standard_apply_requested = Signal(str)
     sort_requested = Signal(object)  # tab_key, sort_key
     filter_changed = Signal(str)
     manual_reset_requested = Signal()
@@ -214,6 +229,46 @@ class TasksPage(QWidget):
         layout.addLayout(self.tab_row)
 
         self.progress_bar = TaskProgressBar()
+
+        # "Templates" / "★ Standard Templates" source tabs, sitting flush on
+        # top of the add-row (User-Wunsch, 2026-09-09, after iterating on a
+        # preview: "gerne die Swap Buttons oberhalb des Feldes anbringen"
+        # then converging on real folder-style tabs above the WHOLE row --
+        # "wie wärs damit?"). Switching tabs only ever changes which list
+        # the Template dropdown pulls from; the rest of the row keeps its
+        # exact layout. Standard Template entries carry their own fixed
+        # schedule/priority and never an amount at all (User-Wunsch: "dort
+        # zählen die Prios nicht, sowie der Schedule" / "dürfen ... kein
+        # amount haben"), so those three controls lock (disabled, shown for
+        # reference only) whenever the Standards tab is active.
+        self._template_source = "templates"
+        self._standard_templates: dict = {"tasks": [], "shopping": []}
+
+        self.source_tab_row = QHBoxLayout()
+        self.source_tab_row.setSpacing(3)
+        self.source_tab_row.setContentsMargins(18, 0, 0, 0)
+
+        self.source_templates_btn = QPushButton(self.tr(self.language, "template_source_templates"))
+        self.source_templates_btn.setObjectName("templateSourceTab")
+        self.source_templates_btn.setCheckable(True)
+        self.source_templates_btn.setChecked(True)
+        self.source_templates_btn.setCursor(Qt.PointingHandCursor)
+        self.source_templates_btn.clicked.connect(lambda: self._set_template_source("templates"))
+
+        self.source_standards_btn = QPushButton(self.tr(self.language, "template_source_standards"))
+        self.source_standards_btn.setObjectName("templateSourceTab")
+        self.source_standards_btn.setCheckable(True)
+        self.source_standards_btn.setCursor(Qt.PointingHandCursor)
+        self.source_standards_btn.clicked.connect(lambda: self._set_template_source("standards"))
+
+        self._source_btn_group = QButtonGroup(self)
+        self._source_btn_group.setExclusive(True)
+        self._source_btn_group.addButton(self.source_templates_btn)
+        self._source_btn_group.addButton(self.source_standards_btn)
+
+        self.source_tab_row.addWidget(self.source_templates_btn)
+        self.source_tab_row.addWidget(self.source_standards_btn)
+        self.source_tab_row.addStretch()
 
         add_panel = QFrame()
         add_panel.setObjectName("addPanel")
@@ -371,9 +426,19 @@ class TasksPage(QWidget):
         self.schedule_season_btn.hide()
 
         add_layout.addWidget(self.add_btn)
-        
+
+        # Tight spacing here (unlike the page's own 22px section spacing)
+        # so the source tabs sit visually flush on top of add_panel, like a
+        # real folder-tab flap, instead of floating a whole section above it.
+        add_section = QWidget()
+        add_section_layout = QVBoxLayout(add_section)
+        add_section_layout.setContentsMargins(0, 0, 0, 0)
+        add_section_layout.setSpacing(0)
+        add_section_layout.addLayout(self.source_tab_row)
+        add_section_layout.addWidget(add_panel)
+
         layout.addWidget(self.progress_bar)
-        layout.addWidget(add_panel)
+        layout.addWidget(add_section)
 
         self.sort_row = QHBoxLayout()
         self.sort_row.setSpacing(8)
@@ -538,44 +603,71 @@ class TasksPage(QWidget):
         if "eventShopping" in self.tab_buttons:
             self.tab_buttons["eventShopping"].setVisible(visible)
 
-    def _repopulate_combo(self, templates: list):
+    def _repopulate_combo(self, templates: list, placeholder: str):
         self.template_combo.blockSignals(True)
         self.template_combo.clear()
         for tmpl in templates:
             self.template_combo.addItem(tmpl.get("title", "?"), tmpl)
         self.template_combo.setCurrentIndex(-1)
         self.template_combo.blockSignals(False)
+        self.template_combo.lineEdit().setPlaceholderText(placeholder)
+
+    def _set_template_source(self, source: str):
+        """Swaps the Template dropdown between the normal catalog and
+        Standard Templates (User-Wunsch, 2026-09-09, after a preview
+        iteration converged on real folder tabs above the add-row: "so
+        bitte übernehmen"). See update_input_mode() for the locking of
+        Schedule/Priority/Amount that goes along with the Standards side."""
+        if source == self._template_source:
+            return
+        self._template_source = source
+        self.update_input_mode()
 
     def update_input_mode(self):
         is_shopping = self.active_tab == "shopping"
         is_tasks = self.active_tab == "tasks"
         is_template_mode = is_shopping or is_tasks
+        is_standards = self._template_source == "standards"
 
-        # Repopulate combo for the active tab
+        # Repopulate combo for the active tab + source
         if is_tasks:
-            self._repopulate_combo(self._task_templates)
-            has_templates = bool(self._task_templates)
+            source_list = self._standard_templates.get("tasks", []) if is_standards else self._task_templates
         elif is_shopping:
-            self._repopulate_combo(self._templates)
-            has_templates = bool(self._templates)
+            source_list = self._standard_templates.get("shopping", []) if is_standards else self._templates
         else:
-            has_templates = False
+            source_list = []
+
+        if is_template_mode:
+            placeholder_key = "standard_template_placeholder" if is_standards else "template_placeholder"
+            self._repopulate_combo(source_list, self.tr(self.language, placeholder_key))
+        has_templates = bool(source_list) if is_template_mode else False
 
         self.title_input.setVisible(not is_template_mode)
         self.desc_input.setVisible(not is_template_mode)
-        self.priority_input.setVisible(True)
-        self.amount_input.setVisible(is_template_mode and has_templates)
+        self.priority_input.setVisible(not (is_template_mode and is_standards))
+        self.amount_input.setVisible(is_template_mode and has_templates and not is_standards)
         self.char_input.setVisible(is_template_mode and has_templates)
-        self.template_combo.setVisible(is_template_mode and has_templates)
+        self.template_combo.setVisible(is_template_mode and has_templates and not is_standards)
+
+        # Standard Template entries carry their OWN fixed schedule/priority
+        # and never an amount at all (User-Wunsch: "dort zählen die Prios
+        # nicht, sowie der Schedule" / "dürfen ... kein amount haben"), and
+        # "+Add" no longer needs a picked entry either (User-Wunsch: bulk-
+        # add every not-yet-assigned Standard Template instead) -- so none
+        # of Schedule/Priority/Amount/Template mean anything on this tab;
+        # hide them outright rather than showing a locked, meaningless value.
+        self.schedule_daily_btn.setVisible(is_template_mode and not is_standards)
+        self.schedule_weekly_btn.setVisible(is_template_mode and not is_standards)
+        self.schedule_season_btn.setVisible(is_template_mode and not is_standards)
+        if is_standards:
+            self.amount_input.clear()
+
+        self.source_templates_btn.setVisible(is_template_mode)
+        self.source_standards_btn.setVisible(is_template_mode)
         self.no_templates_hint.setVisible(is_template_mode and not has_templates)
         self.add_btn.setEnabled(not is_template_mode or has_templates)
         self.sort_price_btn.setVisible(is_shopping)
         self.sort_location_btn.setVisible(is_shopping)
-
-        # Schedule toggle buttons in all template modes
-        self.schedule_daily_btn.setVisible(is_template_mode)
-        self.schedule_weekly_btn.setVisible(is_template_mode)
-        self.schedule_season_btn.setVisible(is_template_mode)
 
         # Event checkbox only for legacy non-template tabs
         self.event_input.setVisible(not is_template_mode and self._show_events)
@@ -702,16 +794,32 @@ class TasksPage(QWidget):
         self._character_btn.setText(self.tr(self.language, "tab_character"))
         self._full_view_btn.setText(self.tr(self.language, "full_view_btn"))
         self._import_btn.setText(self.tr(self.language, "full_view_import_btn"))
-        self.template_combo.lineEdit().setPlaceholderText(self.tr(self.language, "template_placeholder"))
+        self.source_templates_btn.setText(self.tr(self.language, "template_source_templates"))
+        self.source_standards_btn.setText(self.tr(self.language, "template_source_standards"))
+        placeholder_key = "standard_template_placeholder" if self._template_source == "standards" else "template_placeholder"
+        self.template_combo.lineEdit().setPlaceholderText(self.tr(self.language, placeholder_key))
         self.no_templates_hint.setText(self.tr(self.language, "no_templates_hint"))
         self._manual_reset_btn.setToolTip(self.tr(self.language, "manual_reset_tooltip"))
 
         self.progress_bar.update_language(language, self.tr)
 
-    def update_stats(self, total: int, done: int, open_count: int):
-        self.progress_bar.update_stats(total, done, open_count)
+    def update_stats(self, total: int, done: int, open_count: int, missed_count: int = 0):
+        self.progress_bar.update_stats(total, done, open_count, missed_count)
 
     def emit_add_task(self):
+        # Standards tab: no picker required at all -- "+Add" bulk-applies
+        # every not-yet-assigned Standard Template to the selected character
+        # in one go (User-Wunsch, 2026-09-09: "Falls Templates bereits
+        # zugewiesen sind, sollen alle templates aus dem Standard
+        # hinzugefügt werden, die nicht bereits zugewiesen sind"). MainWindow
+        # does the actual per-title dedup since only it can see the live
+        # task/shopping lists.
+        if self._template_source == "standards":
+            character = self.char_input.currentData() or ""
+            self.standard_apply_requested.emit(character)
+            self.char_input.setCurrentIndex(0)
+            return
+
         if self.active_tab == "shopping":
             tmpl = self.template_combo.currentData()
             if tmpl is None:
@@ -789,6 +897,11 @@ class TasksPage(QWidget):
         if self.active_tab == "tasks":
             self.update_input_mode()
 
+    def update_standard_templates(self, standard_templates: dict):
+        self._standard_templates = standard_templates or {"tasks": [], "shopping": []}
+        if self._template_source == "standards":
+            self.update_input_mode()
+
     def update_characters(self, char_names: list[str]):
         current = self.char_input.currentData()
         self._rebuild_char_input(char_names, select_data=current)
@@ -820,10 +933,23 @@ class TasksPage(QWidget):
         self.title_input.setPlaceholderText(text)
 
     def render_tasks(self, tasks: list):
+        # Real bug found + fixed (User-reported, 2026-09-09, screenshots:
+        # stray top-level "python3" windows appeared -- each showing a
+        # single leftover card -- right when switching the Tasks/Shopping
+        # tab). setParent(None) alone only detaches a widget from its
+        # layout; it does NOT hide it. A widget that was already visible
+        # right before losing its parent gets promoted by Qt into its own
+        # real top-level window instead of just disappearing. NOT
+        # deleteLater() here -- these TaskCard/ShoppingCard objects are the
+        # SAME long-lived instances kept in MainWindow.task_lists and get
+        # re-inserted (possibly this very same call, if `tasks` still
+        # includes them) below; deleting them would break them on the very
+        # next refresh() instead of just re-parenting them.
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             widget = item.widget()
             if widget:
+                widget.hide()
                 widget.setParent(None)
 
         for task in tasks:

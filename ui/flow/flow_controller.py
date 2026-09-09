@@ -323,16 +323,6 @@ class FlowController:
         except (ValueError, TypeError):
             return 0
 
-    def _populate_shopping_dropdown(self, panel):
-        """Pass item/task templates from main window to panel."""
-        main = self.window.parent()
-        if not main:
-            return
-        if hasattr(main, "item_templates"):
-            panel.set_shopping_options(list(main.item_templates))
-        if hasattr(main, "task_templates"):
-            panel.set_task_options(list(main.task_templates))
-
     def _find_parent_id(self, node_id: str) -> str | None:
         for parent_id, parent_node in self.window.nodes.items():
             if node_id in parent_node.children:
@@ -411,11 +401,10 @@ class FlowController:
         if char_idx >= 0:
             panel.symbol_combo.model().item(char_idx).setEnabled(char_allowed)
 
-        # Character section
+        # Character items round-trip only (no visible section anymore --
+        # see NodeEditorPanel's "Character Items" comment).
         is_char = node.icon == "character"
-        panel.character_section.setVisible(is_char)
         if is_char:
-            self._populate_shopping_dropdown(panel)
             panel.load_character_items(node.character_items)
         else:
             panel.load_character_items([])

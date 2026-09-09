@@ -22,33 +22,22 @@ _GITHUB_URL = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}"
 # it's one click from here to actually filing something.
 _BUG_REPORT_URL = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/issues/new"
 _DISCORD_PROFILE_URL = "https://discord.com/users/294899670017114122"
-_TWITCH_URL = "https://twitch.tv/soulflaresifu"
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-
-# Official Twitch glyph (Simple Icons, CC0), used here purely to link out to
-# the real Twitch channel -- matches Twitch's own brand guidelines for
-# linking to their platform (User-Wunsch, 2026-08-29: "unter Support
-# einfügen, bei den Discords mit einem Button mit Twitchlogo").
-_TWITCH_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-<path fill="#9146FF" d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L21.857 12V0zm14.143 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.286z"/>
-</svg>"""
-
-
-def _twitch_icon(size: int = 20) -> QIcon:
-    renderer = QSvgRenderer(QByteArray(_TWITCH_LOGO_SVG.encode("utf-8")))
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    renderer.render(painter)
-    painter.end()
-    return QIcon(pixmap)
 
 # Official Discord "Clyde" logomark (Simple Icons, CC0), used here purely to
 # link out to real Discord servers -- matches Discord's own brand guidelines
 # for linking to their platform. Re-added (2026-08-29, User-Wunsch: "einfach
 # 'App Support' mit einem Discord Icon dahinter, und bei Aion2 genauso") --
 # both Cooperation-row Discord buttons now carry this icon instead of no
-# icon at all, matching the Twitch button next to them.
+# icon at all.
+#
+# HOW TO ADD ANOTHER PLATFORM BUTTON (Twitch/YouTube/etc., User-Wunsch,
+# 2026-09-09): copy this pair -- an "_xxx_LOGO_SVG" brand glyph (Simple
+# Icons, simpleicons.org, CC0) + an "_xxx_icon()" renderer function below --
+# then in _setup_ui()'s coop_btn_col loop, add one more QPushButton the same
+# way the Discord ones are built: `btn = QPushButton(" Name"); btn.setIcon(
+# _xxx_icon()); btn.clicked.connect(lambda: webbrowser.open(URL));
+# coop_btn_col.addWidget(btn)`.
 _DISCORD_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 <path fill="#5865F2" d="M20.317 4.3728a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
 </svg>"""
@@ -243,13 +232,6 @@ class AboutPage(QWidget):
             btn.clicked.connect(lambda _c=False, u=url: webbrowser.open(u))
             coop_btn_col.addWidget(btn)
 
-        self.twitch_btn = QPushButton(" soulflaresifu")
-        self.twitch_btn.setObjectName("secondaryButton")
-        self.twitch_btn.setFixedWidth(180)
-        self.twitch_btn.setIcon(_twitch_icon())
-        self.twitch_btn.clicked.connect(lambda: webbrowser.open(_TWITCH_URL))
-        coop_btn_col.addWidget(self.twitch_btn)
-
         coop_layout.addLayout(coop_text, 1)
         coop_layout.addLayout(coop_btn_col)
 
@@ -368,7 +350,6 @@ class AboutPage(QWidget):
         self.copy_ver_btn.setText(tr_func(language, "about_copy_ver"))
         self.coop_title_lbl.setText(tr_func(language, "coop_title"))
         self.coop_desc_lbl.setText(tr_func(language, "coop_desc"))
-        self.twitch_btn.setToolTip(tr_func(language, "coop_twitch_desc"))
         self.donate_title_lbl.setText(tr_func(language, "donate"))
         self.donate_desc_lbl.setText(tr_func(language, "donate_desc"))
         self.donate_btn.setText(tr_func(language, "donate_btn"))

@@ -88,6 +88,7 @@ TRANSLATIONS = {
         "total": "Gesamt",
         "done": "Abgeschlossen",
         "remaining": "Verbleibend",
+        "missed": "Verpasst",
 
         # ================= TIMERS =================
         "daily_reset": "Tägl. Reset",
@@ -369,7 +370,6 @@ TRANSLATIONS = {
         "coop_desc": "Diese Discord-Communities arbeiten mit uns zusammen und helfen dabei, die App bekannter zu machen.",
         "coop_aion2_discord_desc": "Die offizielle Aion 2 Community.",
         "coop_zassezero_desc": "Support-Discord für diese App.",
-        "coop_twitch_desc": "Videos zur Entwicklung der App.",
 
         # ================= DONATE =================
         "donate": "Unterstützen ❤",
@@ -407,6 +407,9 @@ TRANSLATIONS = {
         # ================= TEMPLATES =================
         "templates_btn": "📋 Vorlagen",
         "template_placeholder": "Vorlage",
+        "standard_template_placeholder": "Standardvorlage",
+        "template_source_templates": "Vorlagen",
+        "template_source_standards": "★ Standardvorlagen",
         "no_templates_hint": "Keine Vorlagen — öffne 📋 und füge Einträge hinzu",
         "full_view_btn": "🌐 Full View",
         "full_view_import_btn": "⬆ Import",
@@ -415,6 +418,7 @@ TRANSLATIONS = {
         "full_view_import_choose_file_btn": "Datei wählen…",
         "full_view_import_no_file_hint": "Noch keine Datei ausgewählt.",
         "full_view_import_unmatched_warning": "{n} Zeile(n) mit unbekanntem Charakternamen übersprungen: {names}",
+        "full_view_import_create_character_text": "Der Charakter \"{name}\" existiert noch nicht. Jetzt anlegen (inkl. Standard Templates)?",
         "full_view_import_summary": "{new} neu · {done} → erledigt · {open} → offen · {unchanged} unverändert",
         "full_view_import_col_character": "Charakter",
         "full_view_import_col_type": "Typ",
@@ -466,9 +470,11 @@ TRANSLATIONS = {
         "template_add_title": "Vorlage hinzufügen",
         "task_edit_title": "Aufgabe bearbeiten",
         "task_add_title": "Aufgabe hinzufügen",
+        "task_description_toggle": "Beschreibung",
         "placeholder_itemname": "Itemname",
         "placeholder_taskname": "Aufgabenname",
         "placeholder_location_short": "Ort",
+        "placeholder_task_description": "Optionale Beschreibung",
         "template_import_from_db": "🗄 Aus Datenbank importieren",
         "template_import_from_db_title": "Item aus Datenbank wählen",
         "template_import_select_btn": "Auswählen",
@@ -940,6 +946,7 @@ TRANSLATIONS = {
         "total": "Всего",
         "done": "Выполнено",
         "remaining": "Осталось",
+        "missed": "Пропущено",
 
         # ================= TIMERS =================
         "daily_reset": "Ежедн. сброс",
@@ -1220,7 +1227,6 @@ TRANSLATIONS = {
         "coop_desc": "Эти Discord-сообщества сотрудничают с нами и помогают рассказывать о приложении.",
         "coop_aion2_discord_desc": "Официальное сообщество Aion 2.",
         "coop_zassezero_desc": "Discord поддержки для этого приложения.",
-        "coop_twitch_desc": "Видео о разработке приложения.",
 
         # ================= DONATE =================
         "donate": "Поддержать ❤",
@@ -1258,6 +1264,9 @@ TRANSLATIONS = {
         # ================= TEMPLATES =================
         "templates_btn": "📋 Шаблоны",
         "template_placeholder": "Шаблон",
+        "standard_template_placeholder": "Стандартный шаблон",
+        "template_source_templates": "Шаблоны",
+        "template_source_standards": "★ Стандартные шаблоны",
         "no_templates_hint": "Нет шаблонов — откройте 📋 и добавьте записи",
         "full_view_btn": "🌐 Полный вид",
         "full_view_import_btn": "⬆ Импорт",
@@ -1266,6 +1275,7 @@ TRANSLATIONS = {
         "full_view_import_choose_file_btn": "Выбрать файл…",
         "full_view_import_no_file_hint": "Файл ещё не выбран.",
         "full_view_import_unmatched_warning": "Пропущено строк с неизвестным именем персонажа: {n}: {names}",
+        "full_view_import_create_character_text": "Персонаж «{name}» ещё не существует. Создать его сейчас (включая Standard Templates)?",
         "full_view_import_summary": "{new} новых · {done} → выполнено · {open} → открыто · {unchanged} без изменений",
         "full_view_import_col_character": "Персонаж",
         "full_view_import_col_type": "Тип",
@@ -1317,9 +1327,11 @@ TRANSLATIONS = {
         "template_add_title": "Добавить шаблон",
         "task_edit_title": "Редактировать задачу",
         "task_add_title": "Добавить задачу",
+        "task_description_toggle": "Описание",
         "placeholder_itemname": "Название предмета",
         "placeholder_taskname": "Название задачи",
         "placeholder_location_short": "Место",
+        "placeholder_task_description": "Необязательное описание",
         "template_import_from_db": "🗄 Импорт из базы данных",
         "template_import_from_db_title": "Выбрать предмет из базы данных",
         "template_import_select_btn": "Выбрать",
@@ -1791,6 +1803,7 @@ TRANSLATIONS = {
         "total": "Total",
         "done": "Completed",
         "remaining": "Remaining",
+        "missed": "Missed",
 
         # ================= TIMERS =================
         "daily_reset": "Daily Reset",
@@ -2072,7 +2085,6 @@ TRANSLATIONS = {
         "coop_desc": "These Discord communities work with us and help spread the word about the app.",
         "coop_aion2_discord_desc": "The official Aion 2 community.",
         "coop_zassezero_desc": "Support Discord for this app.",
-        "coop_twitch_desc": "Development videos.",
 
         # ================= DONATE =================
         "donate": "Support ❤",
@@ -2110,6 +2122,9 @@ TRANSLATIONS = {
         # ================= TEMPLATES =================
         "templates_btn": "📋 Templates",
         "template_placeholder": "Template",
+        "standard_template_placeholder": "Standard Template",
+        "template_source_templates": "Templates",
+        "template_source_standards": "★ Standard Templates",
         "no_templates_hint": "No templates — open 📋 and add entries",
         "full_view_btn": "🌐 Full View",
         "full_view_import_btn": "⬆ Import",
@@ -2118,6 +2133,7 @@ TRANSLATIONS = {
         "full_view_import_choose_file_btn": "Choose File…",
         "full_view_import_no_file_hint": "No file selected yet.",
         "full_view_import_unmatched_warning": "{n} row(s) with an unrecognized character name were skipped: {names}",
+        "full_view_import_create_character_text": "The character \"{name}\" doesn't exist yet. Create it now (including Standard Templates)?",
         "full_view_import_summary": "{new} new · {done} → done · {open} → open · {unchanged} unchanged",
         "full_view_import_col_character": "Character",
         "full_view_import_col_type": "Type",
@@ -2169,7 +2185,9 @@ TRANSLATIONS = {
         "template_add_title": "Add Template",
         "task_edit_title": "Edit Task",
         "task_add_title": "Add Task",
+        "task_description_toggle": "Description",
         "placeholder_itemname": "Item name",
+        "placeholder_task_description": "Optional description",
         "placeholder_taskname": "Task name",
         "placeholder_location_short": "Location",
         "placeholder_price_k": "Price (in K)",

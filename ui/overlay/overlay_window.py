@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QSlider, QMenu, QWidgetAction, QCheckBox,
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPainter, QColor, QLinearGradient, QBrush
+from PySide6.QtGui import QPainter, QColor, QLinearGradient, QBrush, QActionGroup
 
 PRIORITY_COLORS = {
     "high":   QColor(239, 68,  68),
@@ -390,6 +390,23 @@ class OverlayWindow(QWidget):
         )
         self.setWindowOpacity(0.9)
 
+        # "Char" switch button (User-Wunsch, way back: "einen kleinen
+        # Button 'Char' einfügen, über den man zwischen den einzelnen
+        # Chars wechseln kann - denke, wenn man 4 oder mehr chars hat und
+        # gleichzeitig alle Tasks anzeigen lässt, ist das schnell
+        # überflutet"). Filters the Tasks section down to one character
+        # instead of always mixing every character's tasks together;
+        # shows that character's own name once a filter is active instead
+        # of the generic "Char" label, so the active filter is visible at
+        # a glance without opening the popover.
+        self._char_btn = QPushButton("Char")
+        self._char_btn.setObjectName("OverlayCharBtn")
+        self._char_btn.setFixedHeight(24)
+        self._char_btn.setCursor(Qt.PointingHandCursor)
+        self._char_btn.setToolTip("Filter Tasks by character")
+        self._char_btn.clicked.connect(self._show_char_popover)
+        self._update_char_btn_label()
+
         # Gear icon (User-Wunsch, 2026-09-05: bring it back, this time as a
         # section-visibility picker rather than its original Tasks/Guide
         # mode-switch role -- see OverlayWindow._show_section_popover).
@@ -408,6 +425,7 @@ class OverlayWindow(QWidget):
 
         title_row.addWidget(dot)
         title_row.addWidget(self._profile_lbl, 1)
+        title_row.addWidget(self._char_btn)
         title_row.addWidget(self._gear_btn)
         title_row.addWidget(self._opacity_slider)
         title_row.addWidget(close_btn)
@@ -479,6 +497,7 @@ class OverlayWindow(QWidget):
                 item.widget().deleteLater()
 
         self._profile_lbl.setText(self.main_window.profile_name)
+        self._update_char_btn_label()
         # Rebuilt from scratch each refresh -- rows register their own tick
         # callback (see OverlayInfoRow usage below) so _tick_timers() can
         # update just the value labels every second without a full rebuild.
@@ -534,6 +553,41 @@ class OverlayWindow(QWidget):
     def _on_section_toggled(self, key: str, checked: bool):
         self.main_window.overlay_visible_sections[key] = checked
         self.main_window.save_profile(silent=True)
+        self.refresh()
+
+    # character filter (Tasks section)
+
+    def _update_char_btn_label(self):
+        current = getattr(self.main_window, "overlay_char_filter", "") or ""
+        self._char_btn.setText(current if current else "Char")
+
+    def _show_char_popover(self):
+        mw = self.main_window
+        current = getattr(mw, "overlay_char_filter", "") or ""
+        menu = QMenu(self)
+        menu.setObjectName("OverlayMenu")
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+
+        all_action = menu.addAction("All Characters")
+        all_action.setCheckable(True)
+        all_action.setChecked(current == "")
+        all_action.triggered.connect(lambda: self._on_char_filter_selected(""))
+        group.addAction(all_action)
+
+        for name in getattr(mw, "characters", []):
+            action = menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(name == current)
+            action.triggered.connect(lambda _c=False, n=name: self._on_char_filter_selected(n))
+            group.addAction(action)
+
+        menu.exec(self._char_btn.mapToGlobal(self._char_btn.rect().bottomLeft()))
+
+    def _on_char_filter_selected(self, name: str):
+        self.main_window.overlay_char_filter = name
+        self.main_window.save_profile(silent=True)
+        self._update_char_btn_label()
         self.refresh()
 
     # section builders
@@ -708,17 +762,27 @@ class OverlayWindow(QWidget):
     # populate
 
     def _build_tasks_section(self) -> _AccordionSection:
+        # Real bug found + fixed (2026-09-09): this used to read
+        # card.title_label.text() and then prepend "Nx " again itself --
+        # once TaskCard/ShoppingCard started showing "Title (Nx)" in that
+        # same label (see MainWindow.TaskCard._refresh_title_display), the
+        # amount was shown twice ("5x Nightmare (5x)"). card.title is the
+        # plain, undecorated value both classes now expose for exactly
+        # this kind of reuse.
+        char_filter = getattr(self.main_window, "overlay_char_filter", "") or ""
         rows = []
         for tab_key, cards in self.main_window.task_lists.items():
             for i, card in enumerate(cards):
                 if card.completed:
                     continue
+                character = getattr(card, "character", "")
+                if char_filter and character != char_filter:
+                    continue
                 priority = getattr(card, "priority_value", None) or getattr(card, "priority", "middle")
-                title = card.title_label.text()
+                title = card.title
                 amount = getattr(card, "amount", None)
                 if amount and str(amount) not in ("0", "1", ""):
                     title = f"{amount}x {title}"
-                character = getattr(card, "character", "")
                 if character:
                     title = f"{title} · {character}"
                 schedule = getattr(card, "schedule", "daily")

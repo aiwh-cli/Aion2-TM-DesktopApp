@@ -5,6 +5,7 @@ import shutil
 import sys
 import winsound
 from pathlib import Path
+from uuid import uuid4
 from .settings_dialog import SettingsDialog
 from .update_dialog import UpdateDialog
 from .custom_timer_manager_dialog import CustomTimerManagerDialog
@@ -86,9 +87,32 @@ class GradientBackground(QWidget):
 
 class TaskCard(QFrame):
     def __init__(self, title, description="", priority="low", is_event=False,
-                 schedule="daily", character="", template_id="", location=""):
+                 schedule="daily", character="", template_id="", location="",
+                 card_id="", amount="1"):
         super().__init__()
 
+        # Real bug found + fixed (User-reported, 2026-09-09: "man wählt
+        # einen Eintrag an, aktualisiert den Amount ... und es passiert
+        # nix" -- TaskCard never had an amount concept at all, unlike
+        # ShoppingCard, so the Amount field's value was captured on the
+        # form but silently dropped everywhere it reached a TaskCard).
+        # `self.title` is the plain, undecorated title -- kept separate
+        # from title_label's DISPLAYED text (which gets the "(Nx)" suffix
+        # below) so serialize_card() and anything matching by title (e.g.
+        # _delete_card's template lookup) still see the real title, not
+        # the decorated display string.
+        self.title = title
+        self.amount = str(amount or "1")
+
+        # Real gap found + fixed (User-reported, 2026-09-09: "missed" was
+        # only ever matched by (title, character) text, no per-card
+        # identity -- two cards that happen to share a title+character
+        # could both get flagged, and a brand-new card with the same
+        # title+character as an old missed one would wrongly inherit that
+        # status). `template_id` doesn't help here either -- several
+        # cards (one per character) can share the same template_id, so
+        # it identifies "which template", not "which specific card".
+        self.card_id = card_id or str(uuid4())
         self.completed = False
         self.is_event = is_event
         self.schedule = schedule
@@ -110,8 +134,9 @@ class TaskCard(QFrame):
         text_box = QVBoxLayout()
         text_box.setSpacing(2)
 
-        self.title_label = QLabel(title)
+        self.title_label = QLabel()
         self.title_label.setObjectName("taskTitle")
+        self._refresh_title_display()
 
         self.desc_label = QLabel(description)
         self.desc_label.setObjectName("taskDescription")
@@ -150,6 +175,17 @@ class TaskCard(QFrame):
         badge_row.addWidget(self.char_label)
         if not character:
             self.char_label.hide()
+        # User-reported, 2026-09-09: the new "Missed" stat tile had no
+        # per-card equivalent -- you could see a total count but not WHICH
+        # card it referred to. set_missed() (called from
+        # MainWindow.refresh(), which already computes card_id membership
+        # for the stat tile) toggles this same badge.
+        # Hardcoded English, same as the DAILY/WEEKLY/SEASON badges right
+        # above -- this whole row never goes through tr() at all.
+        self.missed_badge = QLabel("MISSED")
+        self.missed_badge.setObjectName("missedBadge")
+        self.missed_badge.setVisible(False)
+        badge_row.addWidget(self.missed_badge)
         badge_row.addStretch()
         text_box.addLayout(badge_row)
 
@@ -203,15 +239,40 @@ class TaskCard(QFrame):
         self.style().unpolish(self)
         self.style().polish(self)
 
+    def set_missed(self, value: bool):
+        self.missed_badge.setVisible(value)
+
+    def _refresh_title_display(self):
+        """Shows "Title (Nx)" once amount is more than 1 (User-Wunsch,
+        2026-09-09: "Titel (Anzahl)") -- title_label's TEXT is purely a
+        display concern; self.title stays the plain, undecorated value
+        everything else (serialization, template-title matching) uses."""
+        if self.amount and self.amount not in ("1", "0", ""):
+            self.title_label.setText(f"{self.title} ({self.amount}x)")
+        else:
+            self.title_label.setText(self.title)
+
+    def set_title(self, title: str):
+        self.title = title
+        self._refresh_title_display()
+
+    def set_amount(self, amount: str):
+        self.amount = str(amount or "1")
+        self._refresh_title_display()
+
     def update_from_template(self, tmpl: dict):
-        """Refresh title/location/priority/schedule from an edited task template."""
+        """Refresh title/location/priority/schedule/description from an edited task template."""
         self.priority_value = tmpl.get("priority", self.priority_value)
         self.schedule = tmpl.get("schedule", self.schedule)
         self.location = tmpl.get("location", self.location)
-        self.title_label.setText(tmpl.get("title", self.title_label.text()))
+        self.set_title(tmpl.get("title", self.title))
         self.location_label.setText(self.location)
         self.location_label.setVisible(bool(self.location))
         self.priority.setText(self.priority_value.upper())
+
+        description = tmpl.get("description", self.desc_label.text())
+        self.desc_label.setText(description)
+        self.desc_label.setVisible(bool(description))
 
         _sched_texts = {"daily": "DAILY", "weekly": "WEEKLY", "season": "SEASON"}
         _sched_names = {"daily": "scheduleDaily", "weekly": "scheduleWeekly", "season": "scheduleSeason"}
@@ -333,6 +394,10 @@ class MainWindow(QMainWindow):
             "tasks": True, "guide": True, "timer": True, "custom_timer": True,
             "skill_priority": False, "gear_priority": False,
         }
+        # "" = show every character's tasks (previous, only behavior) --
+        # User-Wunsch, way back: "einen kleinen Button 'Char' einfügen ...
+        # wenn man 4 oder mehr chars hat, ist das schnell überflutet".
+        self.overlay_char_filter: str = ""
 
         self.flow_map_window = FlowMapWindow(self, language=self.language, tr_func=tr)
         self.flow_map_window.map_switch_requested.connect(self._switch_flow_map)
@@ -406,7 +471,7 @@ class MainWindow(QMainWindow):
                     tmpl["is_general"] = False
                     break
         elif isinstance(card, TaskCard):
-            title_lower = card.title_label.text().lower()
+            title_lower = card.title.lower()
             for tmpl in self.task_templates:
                 if tmpl.get("title", "").lower() == title_lower:
                     tmpl["is_general"] = False
@@ -430,7 +495,7 @@ class MainWindow(QMainWindow):
         priority_val = card.priority if isinstance(card, ShoppingCard) else card.priority_value
         idx = p.priority_input.findData(priority_val)
         p.priority_input.setCurrentIndex(idx if idx >= 0 else 0)
-        p.title_input.setText(card.title if isinstance(card, ShoppingCard) else card.title_label.text())
+        p.title_input.setText(card.title)
         if isinstance(card, ShoppingCard):
             p.amount_input.setText(str(card.amount))
             p.location_input.setText(card.location)
@@ -443,6 +508,11 @@ class MainWindow(QMainWindow):
             p.currency_kinah_btn.setChecked(cur == "kinah")
             p.currency_abyss_btn.setChecked(cur == "abyss")
         else:
+            # User-reported, 2026-09-09: this branch never populated the
+            # Amount field at all for a Task, so it always showed
+            # whatever was left over from a previous edit/add instead of
+            # this card's own value.
+            p.amount_input.setText(str(getattr(card, "amount", "1")))
             p.desc_input.setText(card.desc_label.text())
             sched = getattr(card, "schedule", "daily")
             p.schedule_daily_btn.setChecked(sched == "daily")
@@ -477,10 +547,8 @@ class MainWindow(QMainWindow):
         if isinstance(card, ShoppingCard):
             card.priority = priority
             card.priority_label.setText(prio_text)
-            card.title = title
-            card.title_label.setText(title)
-            card.amount = p.amount_input.text().strip() or "1"
-            card.amount_label.setText(f"{card.amount}x")
+            card.set_title(title)
+            card.set_amount(p.amount_input.text().strip() or "1")
             card.location = p.location_input.text().strip()
             card.price = p.price_input.text().strip() or "0"
             card.currency = p.get_selected_currency()
@@ -498,7 +566,8 @@ class MainWindow(QMainWindow):
         else:
             card.priority_value = priority
             card.priority.setText(prio_text)
-            card.title_label.setText(title)
+            card.set_title(title)
+            card.set_amount(p.amount_input.text().strip() or "1")
             desc = p.desc_input.text().strip()
             card.desc_label.setText(desc)
             card.desc_label.setVisible(bool(desc))
@@ -996,6 +1065,7 @@ class MainWindow(QMainWindow):
             self.sidebar.page_changed.connect(self.handle_sidebar_page_changed)
 
         self.tasks_page.task_add_requested.connect(self.add_task_from_page)
+        self.tasks_page.standard_apply_requested.connect(self._apply_standard_templates_to_existing)
         self.tasks_page.tab_changed.connect(self.select_tab)
 
         self.timers_page.manage_timers_requested.connect(self.open_custom_timer_manager)
@@ -1481,6 +1551,37 @@ class MainWindow(QMainWindow):
 
         open_count = total - done
 
+        # Matches by the snapshotted card_id from _record_missed_daily_
+        # activities (last daily reset) -- so this counts only cards from
+        # THAT exact snapshot that are still in the currently visible tab/
+        # filter, not a fresh live "still open" guess (User-Wunsch,
+        # 2026-09-07: "Genauso die Regel dahinter bauen", after asking for
+        # a live Missed stat here too -- previously this data only ever
+        # reached the exported Full View page's own "Missed (Yesterday)"
+        # tile). Switched from (title, character) text-matching to
+        # card_id (User-Wunsch, 2026-09-09) -- text-matching couldn't
+        # distinguish two same-named cards and wrongly flagged a brand-new
+        # card sharing an old one's title+character.
+        # Checking a missed card off clears its tag/count immediately
+        # (User-Wunsch, 2026-09-09: "sobald eine Missed Karte abgehakt
+        # wird, sollte der Tag verschwinden") -- `completed` is checked
+        # here too, not just card_id membership, since the snapshot itself
+        # only gets REPLACED at the next daily reset and has no way to
+        # know you already handled one of its entries in the meantime.
+        missed_ids = {m.get("card_id", "") for m in self.missed_daily_activities if m.get("card_id")}
+        missed_count = len([t for t in tasks if getattr(t, "card_id", "") in missed_ids and not t.completed])
+
+        # Tags the actual cards, not just the aggregate count above (User-
+        # reported, 2026-09-09: "man sieht keinen Tag der Einträge ... als
+        # missed markiert" -- the stat tile alone didn't say WHICH card).
+        # Runs over BOTH lists, not just the current tab/filter's `tasks`,
+        # so the tag stays correct immediately on switching tabs instead of
+        # only updating on this tab's next refresh().
+        for card_list in (self.task_lists.get("tasks", []), self.task_lists.get("shopping", [])):
+            for card in card_list:
+                if hasattr(card, "set_missed"):
+                    card.set_missed(getattr(card, "card_id", "") in missed_ids and not card.completed)
+
         progress = round(
             (done / total) * 100
         ) if total else 0
@@ -1508,7 +1609,7 @@ class MainWindow(QMainWindow):
                     except ValueError:
                         pass
 
-        self.tasks_page.update_stats(total, done, open_count)
+        self.tasks_page.update_stats(total, done, open_count, missed_count)
 
         if self.active_tab == "shopping":
             parts = []
@@ -1524,7 +1625,7 @@ class MainWindow(QMainWindow):
             if total_np > 0:
                 parts.append(self.format_scaled_price(total_np, "NP"))
             if total_sc > 0:
-                parts.append(self.format_scaled_price(total_sc, "SC"))
+                parts.append(self.format_scaled_price(total_sc, "Coins"))
             price_str = " + ".join(parts) if parts else "—"
             self.tasks_page.set_footer_text(
                 f"● {tr(self.language, 'progress')}: {progress}%   |   "
@@ -2067,6 +2168,7 @@ class MainWindow(QMainWindow):
         saved_overlay_sections = settings.get("overlay_visible_sections")
         if isinstance(saved_overlay_sections, dict):
             self.overlay_visible_sections.update(saved_overlay_sections)
+        self.overlay_char_filter = settings.get("overlay_char_filter", "")
 
         self.toggle_events()
         self.update_countdowns()
@@ -2127,6 +2229,7 @@ class MainWindow(QMainWindow):
                         currency=item.get("currency", "kinah"),
                         character=item.get("character", ""),
                         template_id=item.get("template_id", ""),
+                        card_id=item.get("card_id", ""),
                     )
                 else:
                     card = TaskCard(
@@ -2138,6 +2241,8 @@ class MainWindow(QMainWindow):
                         character=item.get("character", ""),
                         template_id=item.get("template_id", ""),
                         location=item.get("location", ""),
+                        card_id=item.get("card_id", ""),
+                        amount=item.get("amount", "1"),
                     )
 
                 if item.get("completed", False):
@@ -2151,6 +2256,7 @@ class MainWindow(QMainWindow):
         self.standard_templates = data.get("standard_templates", {"tasks": [], "shopping": []})
         self.tasks_page.update_templates(self.item_templates)
         self.tasks_page.update_task_templates(self.task_templates)
+        self.tasks_page.update_standard_templates(self.standard_templates)
 
         # Reconcile: add missing cards for templates that are still is_general=True
         self._sync_shopping_from_templates({})
@@ -2197,19 +2303,22 @@ class MainWindow(QMainWindow):
                 "currency": card.currency,
                 "character": card.character,
                 "template_id": getattr(card, "template_id", ""),
+                "card_id": getattr(card, "card_id", ""),
                 "completed": card.completed,
             }
 
         return {
             "type": "task",
             "priority": getattr(card, "priority_value", "low"),
-            "title": card.title_label.text(),
+            "title": getattr(card, "title", card.title_label.text()),
             "description": card.desc_label.text(),
             "event": getattr(card, "is_event", False),
             "schedule": getattr(card, "schedule", "daily"),
             "character": getattr(card, "character", ""),
             "template_id": getattr(card, "template_id", ""),
             "location": getattr(card, "location", ""),
+            "card_id": getattr(card, "card_id", ""),
+            "amount": getattr(card, "amount", "1"),
             "completed": card.completed,
         }
 
@@ -2299,6 +2408,7 @@ class MainWindow(QMainWindow):
                 ),
                 "missed_daily_activities": self.missed_daily_activities,
                 "overlay_visible_sections": self.overlay_visible_sections,
+                "overlay_char_filter": self.overlay_char_filter,
             },
 
             "tasks": {
@@ -2548,6 +2658,18 @@ class MainWindow(QMainWindow):
     def apply_theme(self, theme):
         self.current_theme = theme
 
+        # Real bug found + fixed (User-reported, 2026-09-08, screenshot:
+        # Templates dialog's "Add Task"/"Close" buttons stayed cyan/purple
+        # on Inferno) -- the theme property only ever lived on
+        # self.background (the central widget), so the `QWidget[theme=...]
+        # #selector` rules only ever matched widgets nested INSIDE it. Any
+        # QDialog(parent=self) -- Templates, Custom Timer manager, etc. --
+        # is a QObject child of MainWindow itself, not of self.background,
+        # so it was never a descendant of anything carrying the property.
+        # Setting it here too (self is the one common ancestor of both)
+        # covers every such dialog in one place instead of one at a time.
+        self.setProperty("theme", theme)
+
         if hasattr(self, "background"):
             self.background.set_theme(theme)
             if hasattr(self, "theme_logo_label"):
@@ -2620,6 +2742,7 @@ class MainWindow(QMainWindow):
             self.standard_templates = dlg.get_standard_templates()
             self.tasks_page.update_templates(self.item_templates)
             self.tasks_page.update_task_templates(self.task_templates)
+            self.tasks_page.update_standard_templates(self.standard_templates)
             self._sync_shopping_from_templates(old_shopping)
             self._sync_tasks_from_templates(old_tasks)
             self.refresh()
@@ -2694,7 +2817,7 @@ class MainWindow(QMainWindow):
             card for card in self.task_lists.get("tasks", [])
             if isinstance(card, TaskCard)
         ]
-        existing_titles = {card.title_label.text().lower() for card in task_cards}
+        existing_titles = {card.title.lower() for card in task_cards}
         for tmpl in self.task_templates:
             title = tmpl.get("title", "").strip()
             tid = tmpl.get("id")
@@ -2703,12 +2826,13 @@ class MainWindow(QMainWindow):
             if is_general and title.lower() not in existing_titles:
                 card = TaskCard(
                     title,
-                    "",
+                    tmpl.get("description", ""),
                     tmpl.get("priority", "middle"),
                     schedule=tmpl.get("schedule", "daily"),
                     template_id=tid,
                     location=tmpl.get("location", ""),
                     character=tmpl.get("character", ""),
+                    amount=tmpl.get("amount", "1"),
                 )
                 self._wire_card(card)
                 self.task_lists.setdefault("tasks", []).append(card)
@@ -2716,7 +2840,7 @@ class MainWindow(QMainWindow):
             elif was_general and not is_general:
                 self.task_lists["tasks"] = [
                     c for c in self.task_lists.get("tasks", [])
-                    if not (isinstance(c, TaskCard) and c.title_label.text().lower() == title.lower())
+                    if not (isinstance(c, TaskCard) and c.title.lower() == title.lower())
                 ]
 
             if tid:
@@ -2724,7 +2848,7 @@ class MainWindow(QMainWindow):
                     # Same fallback as _sync_shopping_from_templates above.
                     same_title = (
                         not card.template_id
-                        and card.title_label.text().strip().lower() == title.lower()
+                        and card.title.strip().lower() == title.lower()
                     )
                     if card.template_id == tid or same_title:
                         card.template_id = tid
@@ -2749,14 +2873,31 @@ class MainWindow(QMainWindow):
         the same "yesterday -> today" boundary this is meant to capture,
         so both get identical treatment. Replaces the previous snapshot
         entirely (always reflects "since the LAST daily reset", not an
-        ever-growing history)."""
+        ever-growing history).
+
+        Carries each card's own `card_id` alongside title/character (User-
+        Wunsch, 2026-09-09: "haben die Einträge keine IDs, über die diese
+        referenziert werden können?") -- title+character alone couldn't
+        tell two same-named cards apart, and wrongly kept flagging a BRAND
+        NEW card as missed just because an old, unrelated card once shared
+        its title+character. title/character stay too, purely for
+        full_view_export.py's own display text (the exported page has no
+        live card objects to look a title up from)."""
         missed = []
         for card in self.task_lists.get("tasks", []):
             if isinstance(card, TaskCard) and card.schedule == "daily" and not card.completed:
-                missed.append({"title": card.title_label.text(), "character": card.character or ""})
+                missed.append({
+                    "card_id": getattr(card, "card_id", ""),
+                    "title": card.title,
+                    "character": card.character or "",
+                })
         for card in self.task_lists.get("shopping", []):
             if isinstance(card, ShoppingCard) and card.schedule == "daily" and not card.completed:
-                missed.append({"title": card.title, "character": card.character or ""})
+                missed.append({
+                    "card_id": getattr(card, "card_id", ""),
+                    "title": card.title,
+                    "character": card.character or "",
+                })
         self.missed_daily_activities = missed
 
     def _sync_character_items_to_shopping(self, char_name: str, items: list):
@@ -2769,8 +2910,17 @@ class MainWindow(QMainWindow):
             c for c in self.task_lists.get("shopping", [])
             if c not in removed_shop
         ]
+        # Same fix as TasksPage.render_tasks() (User-reported, 2026-09-09:
+        # stray top-level "python3" windows) -- setParent(None) alone
+        # doesn't hide an already-visible widget, so Qt promotes it into
+        # its own real window instead of it just disappearing. Unlike
+        # render_tasks()'s temporary detach (those cards get reused right
+        # after), these ARE permanently dropped from task_lists here, so
+        # deleteLater() is correct too, not just hide().
         for c in removed_shop:
+            c.hide()
             c.setParent(None)
+            c.deleteLater()
 
         removed_tasks = [
             c for c in self.task_lists.get("tasks", [])
@@ -2781,7 +2931,9 @@ class MainWindow(QMainWindow):
             if c not in removed_tasks
         ]
         for c in removed_tasks:
+            c.hide()
             c.setParent(None)
+            c.deleteLater()
 
         for item in items:
             if item.get("type") == "task":
@@ -2793,6 +2945,7 @@ class MainWindow(QMainWindow):
                     schedule=item.get("schedule", "daily"),
                     character=char_name,
                     location=item.get("location", ""),
+                    amount=item.get("amount", "1"),
                 )
                 self._wire_card(card)
                 self.task_lists.setdefault("tasks", []).append(card)
@@ -2879,6 +3032,7 @@ class MainWindow(QMainWindow):
         dialog = FullViewImportDialog(
             self.characters, self._plan_full_view_import, self.apply_full_view_import_plan,
             language=self.language, tr_func=tr, parent=self,
+            create_character_callback=self._add_character,
         )
         dialog.exec()
 
@@ -2887,7 +3041,7 @@ class MainWindow(QMainWindow):
         for card in self.task_lists.get("tasks", []):
             if not isinstance(card, TaskCard):
                 continue
-            if card.title_label.text().strip().lower() != title_l:
+            if card.title.strip().lower() != title_l:
                 continue
             if getattr(card, "schedule", "daily") != schedule:
                 continue
@@ -2938,7 +3092,7 @@ class MainWindow(QMainWindow):
                 sibling = next(
                     (c for c in self.task_lists.get("tasks", [])
                      if isinstance(c, TaskCard)
-                     and c.title_label.text().strip().lower() == row["title"].strip().lower()
+                     and c.title.strip().lower() == row["title"].strip().lower()
                      and getattr(c, "schedule", "daily") == row["schedule"]),
                     None,
                 )
@@ -3029,10 +3183,13 @@ class MainWindow(QMainWindow):
         for tmpl in self.standard_templates.get("tasks", []):
             card = TaskCard(
                 tmpl.get("title", ""),
+                tmpl.get("description", ""),
                 priority=tmpl.get("priority", "middle"),
                 schedule=tmpl.get("schedule", "daily"),
                 character=character,
                 location=tmpl.get("location", ""),
+                amount=tmpl.get("amount", "1"),
+                template_id=tmpl.get("source_id") or tmpl.get("id", ""),
             )
             self._wire_card(card)
             self.task_lists.setdefault("tasks", []).append(card)
@@ -3046,10 +3203,69 @@ class MainWindow(QMainWindow):
                 schedule=tmpl.get("schedule", "daily"),
                 currency=tmpl.get("currency", "kinah"),
                 character=character,
+                template_id=tmpl.get("source_id") or tmpl.get("id", ""),
             )
             self._wire_card(card)
             self.task_lists.setdefault("shopping", []).append(card)
         if self.standard_templates.get("tasks") or self.standard_templates.get("shopping"):
+            self.refresh()
+            if self.auto_save:
+                self.save_profile(silent=True)
+
+    def _apply_standard_templates_to_existing(self, character: str):
+        """"+Add" on the Standards tab of the Tasks/Shopping toolbar (User-
+        Wunsch, 2026-09-09: "Falls Templates bereits zugewiesen sind, sollen
+        alle templates aus dem Standard hinzugefügt werden, die nicht
+        bereits zugewiesen sind") -- unlike _apply_standard_templates
+        (character-CREATION only, unconditional), this targets an EXISTING
+        character and is safe to click repeatedly: entries whose title that
+        character already has (task OR shopping list, either kind matches
+        this call's active tab) are skipped instead of duplicated. Also
+        resolves the "nothing happens" report from picking one entry in the
+        dropdown -- there is no picker requirement here at all, every
+        not-yet-assigned Standard Template just gets added at once."""
+        kind = self.active_tab
+        if kind not in ("tasks", "shopping"):
+            return
+        existing_titles = {
+            c.title.strip().lower()
+            for c in self.task_lists.get(kind, [])
+            if getattr(c, "character", "") == character
+        }
+        added_any = False
+        for tmpl in self.standard_templates.get(kind, []):
+            title = tmpl.get("title", "").strip()
+            if not title or title.lower() in existing_titles:
+                continue
+            template_id = tmpl.get("source_id") or tmpl.get("id", "")
+            if kind == "tasks":
+                card = TaskCard(
+                    title,
+                    tmpl.get("description", ""),
+                    priority=tmpl.get("priority", "middle"),
+                    schedule=tmpl.get("schedule", "daily"),
+                    character=character,
+                    location=tmpl.get("location", ""),
+                    amount="1",
+                    template_id=template_id,
+                )
+            else:
+                card = ShoppingCard(
+                    priority=tmpl.get("priority", "middle"),
+                    amount="1",
+                    title=title,
+                    location=tmpl.get("location", ""),
+                    price=tmpl.get("price", "0"),
+                    schedule=tmpl.get("schedule", "daily"),
+                    currency=tmpl.get("currency", "kinah"),
+                    character=character,
+                    template_id=template_id,
+                )
+            self._wire_card(card)
+            self.task_lists.setdefault(kind, []).append(card)
+            existing_titles.add(title.lower())
+            added_any = True
+        if added_any:
             self.refresh()
             if self.auto_save:
                 self.save_profile(silent=True)
@@ -3321,6 +3537,7 @@ class MainWindow(QMainWindow):
                 character=data.get("character", ""),
                 template_id=data.get("template_id", ""),
                 location=data.get("location", ""),
+                amount=data.get("amount", "1"),
             )
         else:
             card = TaskCard(
@@ -3615,10 +3832,7 @@ class MainWindow(QMainWindow):
                 )
 
             if sort_key == "title":
-                if isinstance(card, ShoppingCard):
-                    return card.title.lower()
-
-                return card.title_label.text().lower()
+                return card.title.lower()
 
             if sort_key == "location":
                 if isinstance(card, ShoppingCard):
@@ -3662,10 +3876,12 @@ class MainWindow(QMainWindow):
         return self.format_scaled_price(value, "Kinah")
 
     def format_scaled_price(self, value, unit: str):
-        """Shared thousands/k-m scaling for every real currency total
-        (Kinah, SC, AP, NP) -- User-Wunsch, 2026-09-05, applied
-        incrementally: Kinah already had it, then SC, then "die gleiche
-        Anpassung für NP und AP"."""
+        """Shared k/m scaling for every real currency total (Kinah, SC, AP,
+        NP) -- User-Wunsch, 2026-09-05, applied incrementally: Kinah
+        already had it, then SC, then "die gleiche Anpassung für NP und
+        AP". Prices are entered/stored in THOUSANDS shorthand (see
+        ShoppingCard.format_currency_price's own matching docstring for
+        why the brief 2026-09-08 "no pre-scale" experiment was reverted)."""
         try:
             scaled = float(str(value).replace(",", ".").strip()) * 1000
         except ValueError:
