@@ -137,6 +137,7 @@ class SettingsPage(QWidget):
     settings_save_requested = Signal(dict)
     check_update_requested = Signal()
     profile_dir_changed = Signal(str)
+    restore_default_profiles_requested = Signal()
     dps_start_requested = Signal(str)  # emits path
 
     profile_name_changed = Signal(str)
@@ -396,6 +397,10 @@ class SettingsPage(QWidget):
         )
         self.profiles_open_btn.setText(
             {"en": "Open folder", "de": "Ordner öffnen", "ru": "Открыть папку"}.get(language, "Open folder")
+        )
+        self.profiles_restore_btn.setText(
+            {"en": "Restore Default profile", "de": "Standardprofil wiederherstellen",
+             "ru": "Восстановить профиль по умолчанию"}.get(language, "Restore Default profile")
         )
 
         self.profiles_name_label.setText(
@@ -1837,8 +1842,24 @@ class SettingsPage(QWidget):
         self.profiles_open_btn.setFixedHeight(36)
         self.profiles_open_btn.clicked.connect(self._open_profile_dir)
 
+        # "Restore Default Profile" (User-Wunsch, 2026-09-10, after
+        # discovering the packaged app never actually shipped/refreshed the
+        # Default profiles at all: "einen Button einfügen, der die Profile
+        # auf press in den Profilordner schiebt ... Popup Frage, ob das
+        # Default Profil überschrieben werden soll") -- pushes this
+        # version's bundled Default/Default_de/Default_ru.json (mirrored
+        # into profile_dir/Backup/ on every launch, see MainWindow.
+        # _refresh_default_profiles_backup) into the live profile folder.
+        # MainWindow owns the actual copy + overwrite confirmation, same
+        # as every other destructive action in this app.
+        self.profiles_restore_btn = QPushButton()
+        self.profiles_restore_btn.setObjectName("secondaryButton")
+        self.profiles_restore_btn.setFixedHeight(36)
+        self.profiles_restore_btn.clicked.connect(self.restore_default_profiles_requested.emit)
+
         btn_row.addWidget(self.profiles_change_btn)
         btn_row.addWidget(self.profiles_open_btn)
+        btn_row.addWidget(self.profiles_restore_btn)
         btn_row.addStretch()
 
         path_layout.addWidget(self.profiles_path_title)

@@ -40,6 +40,20 @@ These features are **not** part of an official update yet and are still under ac
 
 ---
 
+# Version 1.9.8
+
+## ✨ New Features
+
+- **Standard Templates now live inline in the Templates dialog** instead of a separate "Manage Standards" popup — a "Templates / ★ Standard Templates" switch sits right in the Shopping/Tasks tabs you already use, with the same add/edit/delete controls.
+- **New "⟳ Sync" button** pulls in Standard Templates that were added to the app's built-in Default profile since you last checked, without touching or removing anything you've already got — pick which ones to add from a checklist (with "Select all"), each new entry clearly tagged "NEW".
+- **New "Restore Default profile" button in Settings** to reset your Default profile back to the version that ships with the app, with a confirmation before anything gets overwritten.
+
+## 🐛 Bug Fixes
+
+- **The app never actually shipped or refreshed its built-in Default profile content.** A fresh install (or an update) could end up with an outdated or missing starter profile since the bundled reference data was never included in the packaged build. It's now properly bundled and kept available for the "Restore Default profile" and "⟳ Sync" features above.
+
+---
+
 # Version 1.9.7
 
 ## ✨ New Features
@@ -56,7 +70,6 @@ These features are **not** part of an official update yet and are still under ac
 - **Task/Shopping amount now shows next to the title** (e.g. "Commands (5x)") instead of not being reflected anywhere after you set it.
 - Shopping cards' layout now matches Task cards (schedule/character tags moved below the title).
 - "SC" relabeled to "Coins" in price displays (the compact currency-selector buttons keep "SC" for space).
-- Removed the Twitch button from the About page.
 - Removed the Flow Map's "Liste bearbeiten" character item editor, now that the toolbar above handles assigning templates to a character directly.
 
 ## 🐛 Bug Fixes

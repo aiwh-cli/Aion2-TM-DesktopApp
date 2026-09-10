@@ -37,6 +37,23 @@ a = Analysis(
         ('ItemDatabase/data/shop_items.json', 'ItemDatabase/data'),
         ('ItemDatabase/data/dungeon_sets.json', 'ItemDatabase/data'),
         ('ItemDatabase/data/stat_priority_options.json', 'ItemDatabase/data'),
+        # Read-only reference copies of the 3 language Default profiles
+        # (User-Wunsch, 2026-09-10, after discovering the packaged app never
+        # shipped these at all: "Können wir in der App die Profile mitgeben
+        # ... Dann machen wir in der App ein 'Backup Verzeichnis' - in dem
+        # liegen dann die Defaults"). Sourced straight from the real
+        # profiles/ folder (single source of truth, no separate copy to
+        # keep in sync) but land under their OWN "default_profiles" bundle
+        # folder -- deliberately NOT reusing the name "profiles" here, since
+        # MainWindow._resolve_profile_dir() already treats a folder literally
+        # named "profiles" next to the exe as the user's own LIVE, portable-
+        # mode profile directory; bundling seed data under that same name
+        # would silently flip every fresh install from AppData to portable
+        # mode. MainWindow._refresh_default_profiles_backup() copies these
+        # into the user's own profile_dir/Backup/ on every launch.
+        ('profiles/Default.json', 'default_profiles'),
+        ('profiles/Default_de.json', 'default_profiles'),
+        ('profiles/Default_ru.json', 'default_profiles'),
     ],
     hiddenimports=['email', 'email.mime', 'email.mime.text', 'email.mime.multipart'],
     hookspath=[],

@@ -7,6 +7,10 @@ dist/
 build/
 release/
 profiles/last_profile.txt
+# Runtime-generated mirror of the bundled Default profiles (User-Wunsch,
+# 2026-09-10), regenerated on every app launch -- never the source of truth,
+# so committing it would just be a stale duplicate of Default*.json.
+profiles/Backup/
 app.log
 *.db
 *.sqlite

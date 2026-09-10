@@ -42,7 +42,8 @@ class TemplateDialog(QDialog):
     def __init__(self, templates: list, flow_maps: dict, task_templates: list = None,
                  initial_tab: str = "shopping", parent=None,
                  language: str = "en", tr_func=None, item_picker_callback=None,
-                 characters: list = None, standard_templates: dict = None):
+                 characters: list = None, standard_templates: dict = None,
+                 default_standard_templates: dict = None):
         super().__init__(parent)
         # For the post-CSV-import "which character does this apply to"
         # question -- same names MainWindow's own Shopping "Add" form
@@ -83,6 +84,16 @@ class TemplateDialog(QDialog):
             "tasks": [dict(t) for t in standard_templates.get("tasks", [])],
             "shopping": [dict(t) for t in standard_templates.get("shopping", [])],
         }
+        # The language-matched Default profile's OWN Standard Templates --
+        # read-only reference for "⟳ Sync" (User-Wunsch, 2026-09-10), never
+        # written back to. MainWindow resolves which Default file this is
+        # (same language-fallback logic as _preferred_default()) since only
+        # it knows the profiles directory / frozen-app path.
+        default_standard_templates = default_standard_templates or {}
+        self._default_standard_templates = {
+            "tasks": list(default_standard_templates.get("tasks", [])),
+            "shopping": list(default_standard_templates.get("shopping", [])),
+        }
         self.flow_maps = flow_maps
         self._selected_shop_index: int | None = None
         self._selected_task_index: int | None = None
@@ -94,6 +105,15 @@ class TemplateDialog(QDialog):
         self._task_sort_dir: str = "asc"
         self._task_sort_btns: dict = {}
         self._task_search: str = ""
+        # "Templates" / "★ Standard Templates" mode per tab (User-Wunsch,
+        # 2026-09-10: "Manage Standards" popup replaced by a segmented
+        # toggle -- same visual pattern as the Tasks/Shopping add-row
+        # toolbar's own Templates/Standards switch, "Option B" from the
+        # preview -- so Standards now renders INLINE in this same list
+        # instead of a separate dialog. Independent per tab since Shopping
+        # and Tasks each have their own separate Standard Templates list.
+        self._shop_view_mode: str = "templates"
+        self._task_view_mode: str = "templates"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 12)
@@ -142,18 +162,31 @@ class TemplateDialog(QDialog):
         vl.setSpacing(8)
 
         header = QHBoxLayout()
-        info = QLabel(self._t("shop_tab_info"))
-        info.setObjectName("subtitle")
-        standards_btn = QPushButton(self._t("standards_manage_btn"))
-        standards_btn.setObjectName("secondaryButton")
-        standards_btn.setCursor(Qt.PointingHandCursor)
-        standards_btn.clicked.connect(lambda: self._open_standards_manager(is_shop=True))
+        header.setSpacing(6)
+        self._shop_source_tmpl_btn = QPushButton(self._t("template_source_templates"))
+        self._shop_source_tmpl_btn.setObjectName("filterButton")
+        self._shop_source_tmpl_btn.setCursor(Qt.PointingHandCursor)
+        self._shop_source_tmpl_btn.setProperty("active", True)
+        self._shop_source_tmpl_btn.clicked.connect(lambda: self._set_shop_view_mode("templates"))
+        self._shop_source_std_btn = QPushButton(self._t("template_source_standards"))
+        self._shop_source_std_btn.setObjectName("filterButton")
+        self._shop_source_std_btn.setCursor(Qt.PointingHandCursor)
+        self._shop_source_std_btn.clicked.connect(lambda: self._set_shop_view_mode("standards"))
+        self._shop_info_label = QLabel(self._t("shop_tab_info"))
+        self._shop_info_label.setObjectName("subtitle")
+        self._shop_sync_btn = QPushButton()
+        self._shop_sync_btn.setObjectName("secondaryButton")
+        self._shop_sync_btn.setCursor(Qt.PointingHandCursor)
+        self._shop_sync_btn.clicked.connect(lambda: self._open_sync_dialog("shopping"))
+        self._shop_sync_btn.setVisible(False)
         self._shop_add_btn = QPushButton(self._t("template_add_btn"))
         self._shop_add_btn.setObjectName("primaryButton")
         self._shop_add_btn.clicked.connect(self._handle_shop_add_btn)
-        header.addWidget(info)
+        header.addWidget(self._shop_source_tmpl_btn)
+        header.addWidget(self._shop_source_std_btn)
+        header.addWidget(self._shop_info_label)
         header.addStretch()
-        header.addWidget(standards_btn)
+        header.addWidget(self._shop_sync_btn)
         header.addWidget(self._shop_add_btn)
         vl.addLayout(header)
 
@@ -205,18 +238,31 @@ class TemplateDialog(QDialog):
         vl.setSpacing(8)
 
         header = QHBoxLayout()
-        info = QLabel(self._t("task_tab_info"))
-        info.setObjectName("subtitle")
-        standards_btn = QPushButton(self._t("standards_manage_btn"))
-        standards_btn.setObjectName("secondaryButton")
-        standards_btn.setCursor(Qt.PointingHandCursor)
-        standards_btn.clicked.connect(lambda: self._open_standards_manager(is_shop=False))
+        header.setSpacing(6)
+        self._task_source_tmpl_btn = QPushButton(self._t("template_source_templates"))
+        self._task_source_tmpl_btn.setObjectName("filterButton")
+        self._task_source_tmpl_btn.setCursor(Qt.PointingHandCursor)
+        self._task_source_tmpl_btn.setProperty("active", True)
+        self._task_source_tmpl_btn.clicked.connect(lambda: self._set_task_view_mode("templates"))
+        self._task_source_std_btn = QPushButton(self._t("template_source_standards"))
+        self._task_source_std_btn.setObjectName("filterButton")
+        self._task_source_std_btn.setCursor(Qt.PointingHandCursor)
+        self._task_source_std_btn.clicked.connect(lambda: self._set_task_view_mode("standards"))
+        self._task_info_label = QLabel(self._t("task_tab_info"))
+        self._task_info_label.setObjectName("subtitle")
+        self._task_sync_btn = QPushButton()
+        self._task_sync_btn.setObjectName("secondaryButton")
+        self._task_sync_btn.setCursor(Qt.PointingHandCursor)
+        self._task_sync_btn.clicked.connect(lambda: self._open_sync_dialog("tasks"))
+        self._task_sync_btn.setVisible(False)
         self._task_add_btn = QPushButton(self._t("task_add_btn"))
         self._task_add_btn.setObjectName("primaryButton")
         self._task_add_btn.clicked.connect(self._handle_task_add_btn)
-        header.addWidget(info)
+        header.addWidget(self._task_source_tmpl_btn)
+        header.addWidget(self._task_source_std_btn)
+        header.addWidget(self._task_info_label)
         header.addStretch()
-        header.addWidget(standards_btn)
+        header.addWidget(self._task_sync_btn)
         header.addWidget(self._task_add_btn)
         vl.addLayout(header)
 
@@ -281,13 +327,34 @@ class TemplateDialog(QDialog):
 
     # ── Shopping list rendering ───────────────────────────────────────────────
 
+    def _set_shop_view_mode(self, mode: str):
+        if mode == self._shop_view_mode:
+            return
+        self._shop_view_mode = mode
+        self._selected_shop_index = None
+        is_std = mode == "standards"
+        self._shop_source_tmpl_btn.setProperty("active", not is_std)
+        self._shop_source_std_btn.setProperty("active", is_std)
+        for b in (self._shop_source_tmpl_btn, self._shop_source_std_btn):
+            b.style().unpolish(b)
+            b.style().polish(b)
+        self._shop_info_label.setVisible(not is_std)
+        self._shop_sync_btn.setVisible(is_std)
+        if is_std:
+            self._update_shop_sync_btn()
+        self._update_shop_add_btn()
+        self._rebuild_shop_list()
+
+    def _current_shop_list(self) -> list[dict]:
+        return self.standard_templates["shopping"] if self._shop_view_mode == "standards" else self.templates
+
     def _rebuild_shop_list(self):
         while self._shop_list_layout.count() > 1:
             item = self._shop_list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         query = self._shop_search.strip().lower()
-        for i, tmpl in enumerate(self.templates):
+        for i, tmpl in enumerate(self._current_shop_list()):
             if query and query not in tmpl.get("title", "").lower() and query not in tmpl.get("location", "").lower():
                 continue
             row = self._make_shop_row(i, tmpl)
@@ -298,21 +365,25 @@ class TemplateDialog(QDialog):
         self._rebuild_shop_list()
 
     def _make_shop_row(self, index: int, tmpl: dict) -> QWidget:
+        is_std = self._shop_view_mode == "standards"
         row = QFrame()
         row.setObjectName("taskCard")
-        row.setProperty("selected", index == self._selected_shop_index)
-        row.setCursor(Qt.PointingHandCursor)
-        row.mousePressEvent = lambda _e, i=index: self._select_shop_row(i)
+        row.setProperty("selected", (not is_std) and index == self._selected_shop_index)
+        if not is_std:
+            row.setCursor(Qt.PointingHandCursor)
+            row.mousePressEvent = lambda _e, i=index: self._select_shop_row(i)
 
         hl = QHBoxLayout(row)
         hl.setContentsMargins(12, 10, 12, 10)
         hl.setSpacing(10)
 
-        check = QCheckBox()
-        check.setChecked(bool(tmpl.get("is_general", False)))
-        check.setToolTip(self._t("shop_check_tooltip"))
-        check.setCursor(Qt.PointingHandCursor)
-        check.stateChanged.connect(lambda state, i=index: self._set_shop_general(i, bool(state)))
+        if not is_std:
+            check = QCheckBox()
+            check.setChecked(bool(tmpl.get("is_general", False)))
+            check.setToolTip(self._t("shop_check_tooltip"))
+            check.setCursor(Qt.PointingHandCursor)
+            check.stateChanged.connect(lambda state, i=index: self._set_shop_general(i, bool(state)))
+            hl.addWidget(check)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(3)
@@ -346,11 +417,12 @@ class TemplateDialog(QDialog):
         prio_badge = QLabel(_PRIO_TEXTS.get(prio, prio.upper()))
         prio_badge.setObjectName(_PRIO_NAMES.get(prio, "priorityMiddle"))
         badge_row.addWidget(prio_badge)
-        chars = self._get_char_assignments(tmpl.get("title", ""))
-        for char_name in chars:
-            char_badge = QLabel(char_name)
-            char_badge.setObjectName("scheduleWeekly")
-            badge_row.addWidget(char_badge)
+        if not is_std:
+            chars = self._get_char_assignments(tmpl.get("title", ""))
+            for char_name in chars:
+                char_badge = QLabel(char_name)
+                char_badge.setObjectName("scheduleWeekly")
+                badge_row.addWidget(char_badge)
         badge_row.addStretch()
         text_col.addLayout(badge_row)
 
@@ -358,15 +430,20 @@ class TemplateDialog(QDialog):
         edit_btn.setObjectName("secondaryButton")
         edit_btn.setFixedSize(52, 30)
         edit_btn.setCursor(Qt.PointingHandCursor)
-        edit_btn.clicked.connect(lambda _c=False, i=index: self._edit_shop_template(i))
+        if is_std:
+            edit_btn.clicked.connect(lambda _c=False, i=index: self._edit_standard_entry("shopping", i))
+        else:
+            edit_btn.clicked.connect(lambda _c=False, i=index: self._edit_shop_template(i))
 
         del_btn = QPushButton("×")
         del_btn.setObjectName("deleteButton")
         del_btn.setFixedSize(32, 30)
         del_btn.setCursor(Qt.PointingHandCursor)
-        del_btn.clicked.connect(lambda _c=False, i=index: self._delete_shop_template(i))
+        if is_std:
+            del_btn.clicked.connect(lambda _c=False, i=index: self._delete_standard_entry("shopping", i))
+        else:
+            del_btn.clicked.connect(lambda _c=False, i=index: self._delete_shop_template(i))
 
-        hl.addWidget(check)
         hl.addLayout(text_col, 1)
         hl.addWidget(edit_btn)
         hl.addWidget(del_btn)
@@ -374,13 +451,34 @@ class TemplateDialog(QDialog):
 
     # ── Task list rendering ───────────────────────────────────────────────────
 
+    def _set_task_view_mode(self, mode: str):
+        if mode == self._task_view_mode:
+            return
+        self._task_view_mode = mode
+        self._selected_task_index = None
+        is_std = mode == "standards"
+        self._task_source_tmpl_btn.setProperty("active", not is_std)
+        self._task_source_std_btn.setProperty("active", is_std)
+        for b in (self._task_source_tmpl_btn, self._task_source_std_btn):
+            b.style().unpolish(b)
+            b.style().polish(b)
+        self._task_info_label.setVisible(not is_std)
+        self._task_sync_btn.setVisible(is_std)
+        if is_std:
+            self._update_task_sync_btn()
+        self._update_task_add_btn()
+        self._rebuild_task_list()
+
+    def _current_task_list(self) -> list[dict]:
+        return self.standard_templates["tasks"] if self._task_view_mode == "standards" else self.task_templates
+
     def _rebuild_task_list(self):
         while self._task_list_layout.count() > 1:
             item = self._task_list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         query = self._task_search.strip().lower()
-        for i, tmpl in enumerate(self.task_templates):
+        for i, tmpl in enumerate(self._current_task_list()):
             if query and query not in tmpl.get("title", "").lower() and query not in tmpl.get("location", "").lower():
                 continue
             row = self._make_task_row(i, tmpl)
@@ -391,21 +489,25 @@ class TemplateDialog(QDialog):
         self._rebuild_task_list()
 
     def _make_task_row(self, index: int, tmpl: dict) -> QWidget:
+        is_std = self._task_view_mode == "standards"
         row = QFrame()
         row.setObjectName("taskCard")
-        row.setProperty("selected", index == self._selected_task_index)
-        row.setCursor(Qt.PointingHandCursor)
-        row.mousePressEvent = lambda _e, i=index: self._select_task_row(i)
+        row.setProperty("selected", (not is_std) and index == self._selected_task_index)
+        if not is_std:
+            row.setCursor(Qt.PointingHandCursor)
+            row.mousePressEvent = lambda _e, i=index: self._select_task_row(i)
 
         hl = QHBoxLayout(row)
         hl.setContentsMargins(12, 10, 12, 10)
         hl.setSpacing(10)
 
-        check = QCheckBox()
-        check.setChecked(bool(tmpl.get("is_general", False)))
-        check.setToolTip(self._t("task_check_tooltip"))
-        check.setCursor(Qt.PointingHandCursor)
-        check.stateChanged.connect(lambda state, i=index: self._set_task_general(i, bool(state)))
+        if not is_std:
+            check = QCheckBox()
+            check.setChecked(bool(tmpl.get("is_general", False)))
+            check.setToolTip(self._t("task_check_tooltip"))
+            check.setCursor(Qt.PointingHandCursor)
+            check.stateChanged.connect(lambda state, i=index: self._set_task_general(i, bool(state)))
+            hl.addWidget(check)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(3)
@@ -437,15 +539,20 @@ class TemplateDialog(QDialog):
         edit_btn.setObjectName("secondaryButton")
         edit_btn.setFixedSize(52, 30)
         edit_btn.setCursor(Qt.PointingHandCursor)
-        edit_btn.clicked.connect(lambda _c=False, i=index: self._edit_task_template(i))
+        if is_std:
+            edit_btn.clicked.connect(lambda _c=False, i=index: self._edit_standard_entry("tasks", i))
+        else:
+            edit_btn.clicked.connect(lambda _c=False, i=index: self._edit_task_template(i))
 
         del_btn = QPushButton("×")
         del_btn.setObjectName("deleteButton")
         del_btn.setFixedSize(32, 30)
         del_btn.setCursor(Qt.PointingHandCursor)
-        del_btn.clicked.connect(lambda _c=False, i=index: self._delete_task_template(i))
+        if is_std:
+            del_btn.clicked.connect(lambda _c=False, i=index: self._delete_standard_entry("tasks", i))
+        else:
+            del_btn.clicked.connect(lambda _c=False, i=index: self._delete_task_template(i))
 
-        hl.addWidget(check)
         hl.addLayout(text_col, 1)
         hl.addWidget(edit_btn)
         hl.addWidget(del_btn)
@@ -459,13 +566,15 @@ class TemplateDialog(QDialog):
         self._rebuild_shop_list()
 
     def _update_shop_add_btn(self):
-        if self._selected_shop_index is not None:
+        if self._shop_view_mode != "standards" and self._selected_shop_index is not None:
             self._shop_add_btn.setText(self._t("template_update_btn"))
         else:
             self._shop_add_btn.setText(self._t("template_add_btn"))
 
     def _handle_shop_add_btn(self):
-        if self._selected_shop_index is not None:
+        if self._shop_view_mode == "standards":
+            self._add_standard_entry("shopping")
+        elif self._selected_shop_index is not None:
             self._edit_shop_template(self._selected_shop_index)
         else:
             self._add_shop_template()
@@ -478,16 +587,17 @@ class TemplateDialog(QDialog):
             self._shop_sort_dir = "asc"
         self._update_shop_sort_buttons()
         reverse = self._shop_sort_dir == "desc"
+        source = self._current_shop_list()
         if self._shop_sort_key == "name":
-            self.templates.sort(key=lambda t: t.get("title", "").lower(), reverse=reverse)
+            source.sort(key=lambda t: t.get("title", "").lower(), reverse=reverse)
         elif self._shop_sort_key == "priority":
             _order = {"high": 0, "middle": 1, "low": 2}
-            self.templates.sort(key=lambda t: _order.get(t.get("priority", "middle"), 1), reverse=reverse)
+            source.sort(key=lambda t: _order.get(t.get("priority", "middle"), 1), reverse=reverse)
         elif self._shop_sort_key == "schedule":
             _order = {"daily": 0, "weekly": 1, "season": 2}
-            self.templates.sort(key=lambda t: _order.get(t.get("schedule", "daily"), 3), reverse=reverse)
+            source.sort(key=lambda t: _order.get(t.get("schedule", "daily"), 3), reverse=reverse)
         elif self._shop_sort_key == "location":
-            self.templates.sort(key=lambda t: t.get("location", "").lower(), reverse=reverse)
+            source.sort(key=lambda t: t.get("location", "").lower(), reverse=reverse)
         self._selected_shop_index = None
         self._update_shop_add_btn()
         self._rebuild_shop_list()
@@ -578,13 +688,15 @@ class TemplateDialog(QDialog):
         self._rebuild_task_list()
 
     def _update_task_add_btn(self):
-        if self._selected_task_index is not None:
+        if self._task_view_mode != "standards" and self._selected_task_index is not None:
             self._task_add_btn.setText(self._t("template_update_btn"))
         else:
             self._task_add_btn.setText(self._t("task_add_btn"))
 
     def _handle_task_add_btn(self):
-        if self._selected_task_index is not None:
+        if self._task_view_mode == "standards":
+            self._add_standard_entry("tasks")
+        elif self._selected_task_index is not None:
             self._edit_task_template(self._selected_task_index)
         else:
             self._add_task_template()
@@ -597,16 +709,17 @@ class TemplateDialog(QDialog):
             self._task_sort_dir = "asc"
         self._update_task_sort_buttons()
         reverse = self._task_sort_dir == "desc"
+        source = self._current_task_list()
         if self._task_sort_key == "name":
-            self.task_templates.sort(key=lambda t: t.get("title", "").lower(), reverse=reverse)
+            source.sort(key=lambda t: t.get("title", "").lower(), reverse=reverse)
         elif self._task_sort_key == "priority":
             _order = {"high": 0, "middle": 1, "low": 2}
-            self.task_templates.sort(key=lambda t: _order.get(t.get("priority", "middle"), 1), reverse=reverse)
+            source.sort(key=lambda t: _order.get(t.get("priority", "middle"), 1), reverse=reverse)
         elif self._task_sort_key == "schedule":
             _order = {"daily": 0, "weekly": 1, "season": 2}
-            self.task_templates.sort(key=lambda t: _order.get(t.get("schedule", "daily"), 3), reverse=reverse)
+            source.sort(key=lambda t: _order.get(t.get("schedule", "daily"), 3), reverse=reverse)
         elif self._task_sort_key == "location":
-            self.task_templates.sort(key=lambda t: t.get("location", "").lower(), reverse=reverse)
+            source.sort(key=lambda t: t.get("location", "").lower(), reverse=reverse)
         self._selected_task_index = None
         self._update_task_add_btn()
         self._rebuild_task_list()
@@ -680,9 +793,9 @@ class TemplateDialog(QDialog):
         snapshot copies (see __init__'s `[dict(t) for t in ...]`), so
         editing the real template never touched them on its own. Matched
         by "source_id" (NOT "id" -- a Standard Template entry always gets
-        its OWN fresh id when added via the "Standards verwalten" picker,
-        see _StandardTemplatesDialog._on_add, so matching on "id" silently
-        never fired for any real, picker-added entry) -- a no-op if this
+        its OWN fresh id when added via the picker, see
+        _add_standard_entry, so matching on "id" silently never fired for
+        any real, picker-added entry) -- a no-op if this
         template was never added to Standard Templates in the first place.
         Keeps the Standard entry's own "id"/"source_id" intact across the
         overwrite so it stays findable next time."""
@@ -723,29 +836,157 @@ class TemplateDialog(QDialog):
                 self._selected_task_index -= 1
             self._rebuild_task_list()
 
-    # ── Standard Templates ("Standards verwalten") ──────────────────────────
-    # Replaced the old per-tab CSV Import/Export at this exact spot (User-
-    # Wunsch, 2026-09-05: "den Import und Export kann man durch die neue
-    # Funktion dann entfernen"). A small, directly-editable starter pack
-    # ("Man soll 2-3 Standard Templates definieren und anpassen können"),
-    # applied once to every brand-new character -- see MainWindow.
-    # _apply_standard_templates. Reuses _TemplateEditDialog for add/edit
-    # (same form Shopping/Task templates already use) rather than a new
-    # bespoke one.
+    # ── Standard Templates ───────────────────────────────────────────────────
+    # A small, directly-editable starter pack ("Man soll 2-3 Standard
+    # Templates definieren und anpassen können", 2026-09-05), applied once to
+    # every brand-new character -- see MainWindow._apply_standard_templates.
+    # Originally its own "Manage Standards" popup; now rendered INLINE in
+    # this same Shopping/Tasks list via the "Templates / ★ Standard
+    # Templates" toggle above (User-Wunsch, 2026-09-10: "kann man hier bei
+    # Manage Standard Templates statt einem Popup ein Reiter draus machen?
+    # ... ja" -- Option B, the same segmented-toggle pattern already used on
+    # the Tasks/Shopping add-row toolbar). _make_shop_row/_make_task_row
+    # route Edit/Delete here when their tab's view mode is "standards";
+    # _handle_shop_add_btn/_handle_task_add_btn route "+Add" to
+    # _add_standard_entry the same way. Reuses _TemplateEditDialog for the
+    # edit form and _StandardTemplatePickerDialog for "+Add" (same picker
+    # popup, unaffected by the "manage" dialog itself going away).
 
     def get_standard_templates(self) -> dict:
         return self.standard_templates
 
-    def _open_standards_manager(self, is_shop: bool):
-        dlg = _StandardTemplatesDialog(
-            self.standard_templates["shopping" if is_shop else "tasks"],
-            is_shop=is_shop, known_locations=self._known_shop_locations() if is_shop else self._known_task_locations(),
-            available_templates=self.templates if is_shop else self.task_templates,
-            parent=self, language=self._language, tr_func=self._tr,
+    def _add_standard_entry(self, kind: str):
+        is_shop = kind == "shopping"
+        available = self.templates if is_shop else self.task_templates
+        already = {t.get("title", "").strip().lower() for t in self.standard_templates.get(kind, []) if t.get("title")}
+        pickable = [t for t in available if t.get("title", "").strip().lower() not in already]
+        dlg = _StandardTemplatePickerDialog(pickable, parent=self, language=self._language, tr_func=self._tr)
+        if not dlg.exec():
+            return
+        for tmpl in dlg.get_selected():
+            # A COPY with its own new id, not a reference -- editing it
+            # afterward via _edit_standard_entry must never touch the
+            # source template in the main Shopping/Tasks list. source_id
+            # keeps a separate link back to that source template's OWN id
+            # (see _sync_standard_template/_remove_from_standard_templates
+            # above, which match on it).
+            item = dict(tmpl)
+            item["source_id"] = tmpl.get("id", "")
+            item["id"] = str(uuid4())
+            item["is_general"] = False
+            if is_shop:
+                item.setdefault("amount", "1")
+            self.standard_templates.setdefault(kind, []).append(item)
+        if is_shop:
+            self._rebuild_shop_list()
+        else:
+            self._rebuild_task_list()
+
+    def _edit_standard_entry(self, kind: str, index: int):
+        is_shop = kind == "shopping"
+        items = self.standard_templates.get(kind, [])
+        if not (0 <= index < len(items)):
+            return
+        dlg = _TemplateEditDialog(
+            items[index],
+            known_locations=self._known_shop_locations() if is_shop else self._known_task_locations(),
+            parent=self, task_mode=not is_shop, language=self._language, tr_func=self._tr,
             item_picker_callback=self._item_picker_callback if is_shop else None,
         )
         if dlg.exec():
-            self.standard_templates["shopping" if is_shop else "tasks"] = dlg.get_items()
+            data = dlg.get_data()
+            data["id"] = items[index].get("id", str(uuid4()))
+            data["source_id"] = items[index].get("source_id", "")
+            if is_shop:
+                data["amount"] = items[index].get("amount", "1")
+            items[index] = data
+            if is_shop:
+                self._rebuild_shop_list()
+            else:
+                self._rebuild_task_list()
+
+    def _delete_standard_entry(self, kind: str, index: int):
+        items = self.standard_templates.get(kind, [])
+        if 0 <= index < len(items):
+            items.pop(index)
+            if kind == "shopping":
+                self._rebuild_shop_list()
+            else:
+                self._rebuild_task_list()
+
+    def _default_new_entries(self, kind: str) -> list[dict]:
+        """Entries in the language-matched Default profile's Standard
+        Templates that this profile doesn't have yet, matched by title
+        (case-insensitive) -- ids never match across different profiles
+        (established this session), so title is the only reliable key."""
+        existing = {t.get("title", "").strip().lower() for t in self.standard_templates.get(kind, []) if t.get("title")}
+        return [
+            t for t in self._default_standard_templates.get(kind, [])
+            if t.get("title", "").strip().lower() not in existing
+        ]
+
+    def _update_shop_sync_btn(self):
+        count = len(self._default_new_entries("shopping"))
+        self._shop_sync_btn.setText(f'{self._t("standards_sync_btn")} ({count})')
+        self._shop_sync_btn.setEnabled(count > 0)
+
+    def _update_task_sync_btn(self):
+        count = len(self._default_new_entries("tasks"))
+        self._task_sync_btn.setText(f'{self._t("standards_sync_btn")} ({count})')
+        self._task_sync_btn.setEnabled(count > 0)
+
+    def _open_sync_dialog(self, kind: str):
+        """"⟳ Sync" (User-Wunsch, 2026-09-10) -- merge-only: never touches or
+        removes anything already in this profile's own Standard Templates,
+        only ever adds picked entries. If the underlying template a picked
+        entry is based on doesn't exist in THIS profile's own Shopping/Tasks
+        catalog either (different profile, so ids never carried over), a
+        copy of it is added there too, so the new Standard entry has a real
+        source to link back to via source_id -- same as every other entry."""
+        new_entries = self._default_new_entries(kind)
+        if not new_entries:
+            return
+        dlg = _StandardSyncDialog(new_entries, parent=self, language=self._language, tr_func=self._tr)
+        if not dlg.exec():
+            return
+        picked = dlg.get_selected()
+        if not picked:
+            return
+        is_shop = kind == "shopping"
+        catalog = self.templates if is_shop else self.task_templates
+        catalog_by_key = {
+            (t.get("title", "").strip().lower(), t.get("location", "").strip().lower()): t
+            for t in catalog
+        }
+        for entry in picked:
+            key = (entry.get("title", "").strip().lower(), entry.get("location", "").strip().lower())
+            match = catalog_by_key.get(key)
+            if match is None:
+                new_tmpl = {
+                    "id": str(uuid4()),
+                    "title": entry.get("title", ""),
+                    "location": entry.get("location", ""),
+                    "schedule": entry.get("schedule", "daily"),
+                    "priority": entry.get("priority", "middle"),
+                    "is_general": False,
+                }
+                if is_shop:
+                    new_tmpl["price"] = entry.get("price", "0")
+                    new_tmpl["currency"] = entry.get("currency", "kinah")
+                catalog.append(new_tmpl)
+                catalog_by_key[key] = new_tmpl
+                match = new_tmpl
+            std_item = dict(entry)
+            std_item["id"] = str(uuid4())
+            std_item["source_id"] = match.get("id", "")
+            std_item["is_general"] = False
+            self.standard_templates.setdefault(kind, []).append(std_item)
+        if is_shop:
+            self._rebuild_shop_list()
+            self._update_shop_sync_btn()
+        else:
+            self._rebuild_task_list()
+            self._update_task_sync_btn()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -929,183 +1170,136 @@ class _StandardTemplatePickerDialog(QDialog):
             row.setVisible(sched_ok and loc_ok)
 
 
-class _StandardTemplatesDialog(QDialog):
-    """Small, focused list for "Standards verwalten" (User-Wunsch, 2026-
-    09-05: "Man soll 2-3 Standard Templates definieren und anpassen
-    können") -- add/edit/delete a handful of template entries applied
-    once to every brand-new character. Deliberately its own tiny list
-    (no search/sort, unlike the main Shopping/Tasks tabs) since it's
-    meant to stay small; reuses _TemplateEditDialog for the actual add/
-    edit form, same as the main tabs do."""
+class _StandardSyncDialog(QDialog):
+    """Checkbox picker for "⟳ Sync" (User-Wunsch, 2026-09-10: "Wie wärs,
+    wenn wir eine Liste an den User weitergeben von den Einträgen, die
+    nicht doppelt sind? mit einer Auswahl 'alles markieren' und
+    checkboxen?") -- pulls in Standard Template entries the language-
+    matched Default profile has that this profile doesn't yet. Merge-only:
+    the caller (TemplateDialog._open_sync_dialog) already filters to
+    non-duplicate entries, and accepting here never touches or removes
+    anything already in the profile's own list. Same click-anywhere-on-row
+    checkbox pattern as _StandardTemplatePickerDialog, and each row gets a
+    "NEW" tag (User-Wunsch: "die neuen mit 'new' markieren")."""
 
-    def __init__(self, items: list[dict], is_shop: bool, known_locations: list[str],
-                 available_templates: list[dict] | None = None,
-                 parent=None, language: str = "en", tr_func=None, item_picker_callback=None):
+    def __init__(self, new_entries: list[dict], parent=None, language: str = "en", tr_func=None):
         super().__init__(parent)
-        self._items = [dict(t) for t in items]
-        self._is_shop = is_shop
-        self._known_locations = known_locations
-        # The already-existing Shopping/Task template catalog (User-Wunsch,
-        # 2026-09-05: "hier sollte man aus der bereits vorhandenen Template
-        # Liste wählen") -- "+ Add Template" below picks FROM this instead
-        # of opening a blank creation form, so nothing gets typed twice.
-        self._available_templates = list(available_templates or [])
+        self._entries = new_entries
+        self._checks: list[QCheckBox] = []
         self._language = language
         self._tr = tr_func or (lambda _l, k, **kw: k)
-        self._item_picker_callback = item_picker_callback
 
-        self.setWindowTitle(self._t("standards_manage_title"))
-        self.setMinimumSize(420, 420)
-        self.resize(460, 480)
+        self.setWindowTitle(self._t("standards_sync_title"))
+        self.setMinimumSize(400, 460)
+        self.resize(440, 500)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 12)
         layout.setSpacing(10)
 
-        info = QLabel(self._t("standards_manage_desc"))
-        info.setObjectName("subtitle")
-        info.setWordWrap(True)
-        layout.addWidget(info)
+        desc = QLabel(self._t("standards_sync_desc"))
+        desc.setObjectName("subtitle")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
 
-        add_btn = QPushButton(self._t("template_add_btn"))
-        add_btn.setObjectName("primaryButton")
-        add_btn.clicked.connect(self._on_add)
-        layout.addWidget(add_btn, 0, Qt.AlignRight)
+        top_row = QHBoxLayout()
+        self._select_all_check = QCheckBox(self._t("standards_pick_select_all"))
+        self._select_all_check.setCursor(Qt.PointingHandCursor)
+        self._select_all_check.stateChanged.connect(self._on_select_all)
+        self._count_label = QLabel()
+        self._count_label.setObjectName("subtitle")
+        top_row.addWidget(self._select_all_check)
+        top_row.addStretch()
+        top_row.addWidget(self._count_label)
+        layout.addLayout(top_row)
 
-        self._list_container = QWidget()
-        self._list_layout = QVBoxLayout(self._list_container)
-        self._list_layout.setContentsMargins(0, 0, 0, 0)
-        self._list_layout.setSpacing(6)
-        self._list_layout.addStretch()
+        list_container = QWidget()
+        list_layout = QVBoxLayout(list_container)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(6)
+        for entry in self._entries:
+            row = QFrame()
+            row.setObjectName("taskCard")
+            row.setCursor(Qt.PointingHandCursor)
+            hl = QHBoxLayout(row)
+            hl.setContentsMargins(10, 8, 10, 8)
+            hl.setSpacing(10)
+
+            check = QCheckBox(entry.get("title", "—"))
+            check.setCursor(Qt.PointingHandCursor)
+            # Same fix as _StandardTemplatePickerDialog's own rows (User-
+            # reported, 2026-09-05): WA_TransparentForMouseEvents makes the
+            # checkbox/badges pass every click through to the row underneath,
+            # so ONE handler reliably owns the whole row instead of a dead
+            # zone silently eating clicks.
+            check.setAttribute(Qt.WA_TransparentForMouseEvents)
+            check.stateChanged.connect(self._update_count)
+            self._checks.append(check)
+            hl.addWidget(check, 1)
+
+            sched = entry.get("schedule", "daily")
+            sched_badge = QLabel(_SCHEDULE_TEXTS.get(sched, sched.upper()))
+            sched_badge.setObjectName(_SCHEDULE_NAMES.get(sched, "scheduleDaily"))
+            sched_badge.setAttribute(Qt.WA_TransparentForMouseEvents)
+            hl.addWidget(sched_badge)
+
+            new_badge = QLabel(self._t("standards_sync_new_tag"))
+            new_badge.setObjectName("newBadge")
+            new_badge.setAttribute(Qt.WA_TransparentForMouseEvents)
+            hl.addWidget(new_badge)
+
+            def on_row_press(event, c=check, r=row):
+                c.setChecked(not c.isChecked())
+                QFrame.mousePressEvent(r, event)
+            row.mousePressEvent = on_row_press
+
+            list_layout.addWidget(row)
+        list_layout.addStretch()
 
         scroll = QScrollArea()
-        scroll.setWidget(self._list_container)
+        scroll.setWidget(list_container)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setObjectName("scrollArea")
-        # Same dark-mode viewport fix already applied to every other list
-        # in this file (User-reported, 2026-08-29).
         scroll.viewport().setStyleSheet("background: transparent;")
         layout.addWidget(scroll, 1)
 
-        close_btn = QPushButton(self._t("close"))
-        close_btn.setObjectName("primaryButton")
-        close_btn.clicked.connect(self.accept)
-        layout.addWidget(close_btn, 0, Qt.AlignRight)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton(self._t("cancel"))
+        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn.clicked.connect(self.reject)
+        self._apply_btn = QPushButton(self._t("standards_sync_apply_btn"))
+        self._apply_btn.setObjectName("primaryButton")
+        self._apply_btn.clicked.connect(self.accept)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(self._apply_btn)
+        layout.addLayout(btn_row)
 
-        self._rebuild_list()
-
-    def reject(self):
-        # Same fix as TemplateDialog.reject -- no real cancel semantics
-        # (add/edit/delete already apply straight to self._items), so the
-        # native window X / Escape must commit too, not silently discard
-        # the whole session like Qt's default reject() would.
-        self.accept()
+        self._update_count()
 
     def _t(self, key: str, **kwargs) -> str:
         return self._tr(self._language, key, **kwargs)
 
-    def get_items(self) -> list[dict]:
-        return self._items
+    def _on_select_all(self, state):
+        checked = bool(state)
+        for c in self._checks:
+            c.blockSignals(True)
+            c.setChecked(checked)
+            c.blockSignals(False)
+        self._update_count()
 
-    def _rebuild_list(self):
-        while self._list_layout.count() > 1:
-            item = self._list_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        for i, tmpl in enumerate(self._items):
-            row = self._make_row(i, tmpl)
-            self._list_layout.insertWidget(self._list_layout.count() - 1, row)
+    def _update_count(self):
+        n = sum(1 for c in self._checks if c.isChecked())
+        total = len(self._checks)
+        self._count_label.setText(self._t("standards_sync_selected_count", n=n, total=total))
+        self._apply_btn.setEnabled(n > 0)
+        self._select_all_check.blockSignals(True)
+        self._select_all_check.setChecked(n == total and total > 0)
+        self._select_all_check.blockSignals(False)
 
-    def _make_row(self, index: int, tmpl: dict) -> QWidget:
-        row = QFrame()
-        row.setObjectName("taskCard")
-
-        hl = QHBoxLayout(row)
-        hl.setContentsMargins(12, 10, 12, 10)
-        hl.setSpacing(10)
-
-        text_col = QVBoxLayout()
-        text_col.setSpacing(3)
-        title_lbl = QLabel(tmpl.get("title", "—"))
-        title_lbl.setObjectName("taskTitle")
-        text_col.addWidget(title_lbl)
-
-        badge_row = QHBoxLayout()
-        badge_row.setSpacing(6)
-        sched = tmpl.get("schedule", "daily")
-        sched_badge = QLabel(_SCHEDULE_TEXTS.get(sched, sched.upper()))
-        sched_badge.setObjectName(_SCHEDULE_NAMES.get(sched, "scheduleDaily"))
-        badge_row.addWidget(sched_badge)
-        prio = tmpl.get("priority", "middle")
-        prio_badge = QLabel(_PRIO_TEXTS.get(prio, prio.upper()))
-        prio_badge.setObjectName(_PRIO_NAMES.get(prio, "priorityMiddle"))
-        badge_row.addWidget(prio_badge)
-        badge_row.addStretch()
-        text_col.addLayout(badge_row)
-
-        edit_btn = QPushButton("Edit")
-        edit_btn.setObjectName("secondaryButton")
-        edit_btn.setFixedSize(52, 30)
-        edit_btn.setCursor(Qt.PointingHandCursor)
-        edit_btn.clicked.connect(lambda _c=False, i=index: self._on_edit(i))
-
-        del_btn = QPushButton("×")
-        del_btn.setObjectName("deleteButton")
-        del_btn.setFixedSize(32, 30)
-        del_btn.setCursor(Qt.PointingHandCursor)
-        del_btn.clicked.connect(lambda _c=False, i=index: self._on_delete(i))
-
-        hl.addLayout(text_col, 1)
-        hl.addWidget(edit_btn)
-        hl.addWidget(del_btn)
-        return row
-
-    def _on_add(self):
-        already = {t.get("title", "").strip().lower() for t in self._items if t.get("title")}
-        pickable = [t for t in self._available_templates if t.get("title", "").strip().lower() not in already]
-        dlg = _StandardTemplatePickerDialog(pickable, parent=self, language=self._language, tr_func=self._tr)
-        if not dlg.exec():
-            return
-        for tmpl in dlg.get_selected():
-            # A COPY with its own new id, not a reference -- editing it
-            # afterward via _on_edit must never touch the source template
-            # in the main Shopping/Tasks list ("...und anpassen können").
-            # source_id keeps a separate link back to that source template's
-            # OWN id, so a later edit/delete of it (via _sync_standard_
-            # template/_remove_from_standard_templates below) can still find
-            # this copy -- matching on "id" itself never worked for entries
-            # added this way, since "id" here is always a fresh uuid4().
-            item = dict(tmpl)
-            item["source_id"] = tmpl.get("id", "")
-            item["id"] = str(uuid4())
-            item["is_general"] = False
-            if self._is_shop:
-                item.setdefault("amount", "1")
-            self._items.append(item)
-        self._rebuild_list()
-
-    def _on_edit(self, index: int):
-        if not (0 <= index < len(self._items)):
-            return
-        dlg = _TemplateEditDialog(
-            self._items[index], known_locations=self._known_locations, parent=self,
-            task_mode=not self._is_shop, language=self._language, tr_func=self._tr,
-            item_picker_callback=self._item_picker_callback,
-        )
-        if dlg.exec():
-            data = dlg.get_data()
-            data["id"] = self._items[index].get("id", str(uuid4()))
-            data["source_id"] = self._items[index].get("source_id", "")
-            if self._is_shop:
-                data["amount"] = self._items[index].get("amount", "1")
-            self._items[index] = data
-            self._rebuild_list()
-
-    def _on_delete(self, index: int):
-        if 0 <= index < len(self._items):
-            self._items.pop(index)
-            self._rebuild_list()
+    def get_selected(self) -> list[dict]:
+        return [e for e, c in zip(self._entries, self._checks) if c.isChecked()]
 
 
 class _TemplateEditDialog(QDialog):

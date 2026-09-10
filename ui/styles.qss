@@ -1300,6 +1300,19 @@ QComboBox#priorityInput {
     font-weight: 800;
 }
 
+/* "NEW" tag on Sync Standard Templates picker rows (User-Wunsch, 2026-09-10:
+   "bei den 'new' in Sync ... die neuen mit 'new' markieren") -- gold/star
+   tinted to match the "★ Standard Templates" accent used elsewhere. */
+#newBadge {
+    background-color: rgba(251, 191, 36, 0.18);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    border-radius: 8px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
 #scheduleDaily {
     color: #22d3ee;
     background-color: rgba(6, 182, 212, 0.12);

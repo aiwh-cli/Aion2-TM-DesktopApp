@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self.last_profile_file = self.profile_dir / "last_profile.txt"
         self.profile_edit_mode = False
+        self._refresh_default_profiles_backup()
 
         self.shugo_enabled = False
         self.shugo_start_minute = 15
@@ -1149,6 +1150,9 @@ class MainWindow(QMainWindow):
 
         if hasattr(self.settings_page, "profile_dir_changed"):
             self.settings_page.profile_dir_changed.connect(self.change_profile_dir)
+
+        if hasattr(self.settings_page, "restore_default_profiles_requested"):
+            self.settings_page.restore_default_profiles_requested.connect(self._restore_default_profiles)
 
         if hasattr(self.settings_page, "season_reset_changed"):
             self.settings_page.season_reset_changed.connect(self._on_season_reset_changed_from_page)
@@ -2527,6 +2531,91 @@ class MainWindow(QMainWindow):
                 return p
         return None
 
+    def _bundled_default_profiles_dir(self) -> Path:
+        """Where the 3 language Default profiles ship with THIS installed
+        version (User-Wunsch, 2026-09-10, after discovering the packaged app
+        never bundled profiles/ at all -- see Aion2 TM.spec's own comment on
+        the "default_profiles" datas entries). Frozen: PyInstaller onedir
+        extracts bundled datas under sys._MEIPASS (the _internal/ folder),
+        never next to the exe. Dev: profiles/ IS the real, current source
+        of truth already, no separate bundle needed."""
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            return Path(sys._MEIPASS) / "default_profiles"
+        return self.project_root / "profiles"
+
+    def _refresh_default_profiles_backup(self) -> Path:
+        """Mirrors this version's bundled Default profiles into profile_dir/
+        Backup/ on every launch (User-Wunsch, 2026-09-10: "Dann machen wir in
+        der App ein 'Backup Verzeichnis' - in dem liegen dann die
+        Defaults"). Backup/ is purely internal/never user-edited, so
+        silently overwriting it here every start is always safe -- unlike
+        the user's own live Default.json etc., which only the "Restore
+        Default Profile" button (with its own confirmation) ever touches.
+        Returns the Backup directory path."""
+        backup_dir = self.profile_dir / "Backup"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        src_dir = self._bundled_default_profiles_dir()
+        for stem in ("Default", "Default_de", "Default_ru"):
+            src = src_dir / f"{stem}.json"
+            if src.exists():
+                try:
+                    shutil.copy2(src, backup_dir / f"{stem}.json")
+                except OSError:
+                    pass
+        return backup_dir
+
+    def _load_default_standard_templates(self) -> dict:
+        """The language-matched Default profile's OWN Standard Templates --
+        read-only reference for TemplateDialog's "⟳ Sync" (User-Wunsch,
+        2026-09-10: let an existing profile pull in Standard Template
+        entries a later update added to Default). Reads from profile_dir/
+        Backup/ (this version's pristine bundled copy, refreshed every
+        launch) rather than the user's own live Default.json -- that live
+        file could itself be the user's heavily-customized profile, which
+        would make Sync compare it against itself and always find nothing
+        new. Tolerant of a missing/unreadable file since this is a non-
+        critical convenience feature, not core profile data."""
+        stem = self._LANG_DEFAULT_STEMS.get(self.language, "Default")
+        path = self.profile_dir / "Backup" / f"{stem}.json"
+        if not path.exists():
+            return {"tasks": [], "shopping": []}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {"tasks": [], "shopping": []}
+        return data.get("standard_templates", {"tasks": [], "shopping": []})
+
+    def _restore_default_profiles(self):
+        """"Restore Default profile" button in Settings (User-Wunsch, 2026-
+        09-10: "einen Button einfügen, der die Profile auf press in den
+        Profilordner schiebt ... Popup Frage, ob das Default Profil
+        überschrieben werden soll") -- pushes this version's bundled
+        Default/Default_de/Default_ru.json from profile_dir/Backup/ into
+        the live profile folder, confirming first whenever that would
+        overwrite a file already there (same QMessageBox pattern as
+        reset_profile/clear_event_entries above)."""
+        backup_dir = self._refresh_default_profiles_backup()
+        available = [s for s in ("Default", "Default_de", "Default_ru") if (backup_dir / f"{s}.json").exists()]
+        if not available:
+            return
+        existing = [s for s in available if (self.profile_dir / f"{s}.json").exists()]
+        if existing:
+            box = QMessageBox(self)
+            box.setWindowTitle(tr(self.language, "confirm_restore_default_title"))
+            names = ", ".join(f"{s}.json" for s in existing)
+            box.setText(tr(self.language, "confirm_restore_default_text", names=names))
+            yes_btn = box.addButton(tr(self.language, "confirm_overwrite_yes"), QMessageBox.DestructiveRole)
+            box.addButton(tr(self.language, "confirm_no"), QMessageBox.RejectRole)
+            box.exec()
+            if box.clickedButton() is not yes_btn:
+                return
+        for stem in available:
+            shutil.copy2(backup_dir / f"{stem}.json", self.profile_dir / f"{stem}.json")
+        self.show_toast(tr(self.language, "toast_restore_default_done"))
+        if self.profile_name in available:
+            self.load_profile(self.profile_dir / f"{self.profile_name}.json")
+
     # ─────────────────────────────────────────────────────────────────────────
 
     def _load_best_profile_from_dir(self, folder: Path):
@@ -2733,7 +2822,8 @@ class MainWindow(QMainWindow):
                              tr_func=tr,
                              item_picker_callback=self.open_template_item_picker,
                              characters=self.characters,
-                             standard_templates=self.standard_templates)
+                             standard_templates=self.standard_templates,
+                             default_standard_templates=self._load_default_standard_templates())
         if dlg.exec():
             old_shopping = {t.get("id"): t for t in self.item_templates}
             old_tasks = {t.get("id"): t for t in self.task_templates}
