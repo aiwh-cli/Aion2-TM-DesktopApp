@@ -342,6 +342,20 @@ QDialog {
     min-height: 52px;
 }
 
+/* Armory landing page cards -- own selector (not #settingsRow) so the
+   hover affordance below stays scoped to these clickable cards only. */
+#armoryCardRow {
+    background-color: rgba(30, 41, 59, 0.75);
+    border: 1px solid rgba(100, 116, 139, 0.45);
+    border-radius: 10px;
+    min-height: 52px;
+}
+
+#armoryCardRow:hover {
+    background-color: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(34, 211, 238, 0.6);
+}
+
 #settingsTabWidget {
     border: none;
     background: transparent;

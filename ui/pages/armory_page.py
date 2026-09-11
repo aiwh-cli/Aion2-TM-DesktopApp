@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton
-from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
+from PySide6.QtCore import Signal, Qt
 
 
 class ArmoryPage(QWidget):
@@ -12,11 +12,11 @@ class ArmoryPage(QWidget):
     open_crafting_calculator_requested = Signal()
     open_build_planner_requested = Signal()
 
-    # (title_key, desc_key, signal_name or None, button_text_key or None)
+    # (title_key, desc_key, signal_name)
     _ROADMAP_ROWS = [
-        ("armory_roadmap_items_title", "armory_roadmap_items_desc", "open_item_database_requested", "armory_open_btn"),
-        ("armory_roadmap_crafting_title", "armory_roadmap_crafting_desc", "open_crafting_calculator_requested", "armory_open_btn"),
-        ("armory_roadmap_builds_title", "armory_roadmap_builds_desc", "open_build_planner_requested", "armory_open_btn"),
+        ("armory_roadmap_items_title", "armory_roadmap_items_desc", "open_item_database_requested"),
+        ("armory_roadmap_crafting_title", "armory_roadmap_crafting_desc", "open_crafting_calculator_requested"),
+        ("armory_roadmap_builds_title", "armory_roadmap_builds_desc", "open_build_planner_requested"),
     ]
 
     def __init__(self):
@@ -37,11 +37,19 @@ class ArmoryPage(QWidget):
 
         self._roadmap_title_labels = []
         self._roadmap_desc_labels = []
-        self._open_buttons = []
 
-        for title_key, desc_key, signal_name, btn_text_key in self._ROADMAP_ROWS:
+        for title_key, desc_key, signal_name in self._ROADMAP_ROWS:
+            # Whole card is clickable (User-Wunsch, 2026-09-10/11: "Die
+            # Buttons rechts entfernen und die Karten selbst als Buttons
+            # machen, sodass man überall drauf klicken kann") -- own
+            # objectName instead of the shared "settingsRow" so the hover
+            # affordance below doesn't leak onto every other Settings row
+            # that still isn't clickable. Same mousePressEvent-monkeypatch
+            # pattern already used for Task/Shopping cards (MainWindow.
+            # _wire_card) and the Templates picker rows.
             row = QFrame()
-            row.setObjectName("settingsRow")
+            row.setObjectName("armoryCardRow")
+            row.setCursor(Qt.PointingHandCursor)
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(14, 12, 14, 12)
             row_layout.setSpacing(12)
@@ -58,12 +66,12 @@ class ArmoryPage(QWidget):
 
             row_layout.addLayout(text_col, 1)
 
-            if signal_name:
-                open_btn = QPushButton()
-                open_btn.setObjectName("secondaryButton")
-                open_btn.clicked.connect(getattr(self, signal_name).emit)
-                row_layout.addWidget(open_btn)
-                self._open_buttons.append((open_btn, btn_text_key))
+            def on_press(event, signal=getattr(self, signal_name), r=row):
+                if event.button() == Qt.LeftButton:
+                    signal.emit()
+                type(r).mousePressEvent(r, event)
+
+            row.mousePressEvent = on_press
 
             layout.addWidget(row)
 
@@ -79,5 +87,3 @@ class ArmoryPage(QWidget):
             label.setText(tr_func(language, key))
         for label, key in self._roadmap_desc_labels:
             label.setText(tr_func(language, key))
-        for btn, btn_text_key in self._open_buttons:
-            btn.setText(tr_func(language, btn_text_key))

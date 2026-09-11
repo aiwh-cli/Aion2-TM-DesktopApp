@@ -6,6 +6,7 @@ Run fetch_items.py first to populate data/items_all.json, then:
 """
 
 import copy
+import html
 import json
 import math
 import re
@@ -83,7 +84,7 @@ def _get_bounded_text_input(parent, title: str, label: str, initial_text: str = 
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, QSize, Qt, QSortFilterProxyModel, QTimer, Signal
 from PySide6.QtGui import (
     QBrush, QColor, QCursor, QFont, QFontMetrics, QIcon, QLinearGradient, QPainter, QPainterPath, QPalette,
-    QPen, QPixmap, QPolygonF, QStandardItem, QStandardItemModel,
+    QPen, QPixmap, QPolygonF, QStandardItem, QStandardItemModel, QTextDocument, QTextOption,
 )
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
@@ -284,6 +285,23 @@ GEAR_TYPE_COLUMN = 6
 # die Spalten anpassen, je nachdem, welche Kategorie rechts ausgewählt
 # wird?").
 LORD_VALUES_COLUMN = 7
+# Extra breathing room added on top of the widest actual cell's measured
+# text width (User-Wunsch, 2026-09-11) -- sizing a column to EXACTLY fit
+# its content reads as visually cramped.
+_COLUMN_WIDTH_BUFFER = 16
+# Cap on auto-fit column width, expressed as "roughly this many characters
+# wide" rather than a fixed pixel count (User-Wunsch: "bei ultra langen
+# Rezepten/Namen ... auf eine maximale Zeichenanzahl begrenzen") -- an
+# outlier long name elides with "..." instead of blowing the column out.
+_COLUMN_MAX_WIDTH_CHARS = 40
+# Extra reserve for a column's HEADER specifically, on top of
+# _COLUMN_WIDTH_BUFFER (User-Wunsch, 2026-09-11: "Die Spaltenüberschriften
+# sollten auch nicht abgehackt sein") -- QHeaderView reserves real pixel
+# space for its sort-indicator arrow on whichever column is currently
+# sorted, which plain QFontMetrics text measurement knows nothing about.
+# Reserved on every column (not just the currently-sorted one) so a header
+# never clips the moment the user clicks a DIFFERENT column to sort by it.
+_COLUMN_HEADER_RESERVE = 28
 
 # Parsed Wings Equip/Owned Effect stat names (see _parse_wing_effects) are
 # stashed on the ID column's QStandardItem under these roles -- there's no
@@ -496,6 +514,29 @@ _ITEM_TOP_CATEGORIES: list[tuple[str, set[str] | None]] = [
         "Quest Scroll", "Scroll", "Miscellaneous",
     }),
 ]
+
+# Display-text translation for the sidebar buttons built from
+# _ITEM_TOP_CATEGORIES above (User-Wunsch, 2026-09-11: "hier bitte bis auf
+# Pantheon, Arcana, Wings übersetzen") -- deliberately only a DISPLAY-text
+# lookup, never touching group_label itself, which stays the real,
+# untranslated string used everywhere else (dict keys, _on_sidebar_group_
+# selected, _category_group_buttons, dict(_ITEM_TOP_CATEGORIES) lookups).
+# Wings/Arcana/Pantheon are intentionally NOT in this map -- distinct game
+# systems, kept in their original English form in every language, same
+# reasoning as item/skill names never being translated.
+_CATEGORY_GROUP_LABEL_KEYS = {
+    "Gear": "arm_cat_gear",
+    "Materials & Enhancement": "arm_cat_materials",
+    "Consumables": "arm_cat_consumables",
+    "Tools & Services": "arm_cat_tools",
+    "Cosmetics": "arm_cat_cosmetics",
+    "Chests & Misc": "arm_cat_chests_misc",
+}
+
+
+def _category_group_display_text(group_label: str) -> str:
+    key = _CATEGORY_GROUP_LABEL_KEYS.get(group_label)
+    return _t(key) if key else group_label
 
 
 def _gear_group_categories() -> set[str]:
@@ -1419,6 +1460,22 @@ class _RoleColorDelegate(QStyledItemDelegate):
             option.palette.setColor(QPalette.HighlightedText, color)
 
 
+# Mirrors styles.qss's "#DetailInfo { font-size: 13px; }" -- used when
+# measuring #DetailInfo-styled label text via QFontMetrics BEFORE the
+# widget has actually been polished into the app's stylesheet (a freshly
+# constructed QLabel's own .font() still reports Qt's default font at that
+# point, not the QSS rule that will apply once shown).
+_DETAIL_INFO_FONT_PIXEL_SIZE = 13
+
+# Secondary/caption text color for the redesigned browse-only gear popup
+# (chip labels like "ATTACK", the meta-grid labels, the GearScore
+# caption). Real bug found + fixed (User-reported, 2026-09-11, screenshot:
+# "eine Schriftart nutzen, die nicht so blass ist wie die aktuelle") --
+# the original #7d8cab read as too pale/low-contrast against the dark
+# navy background.
+_DETAIL_CAPTION_COLOR = "#a9b7d1"
+
+
 class ItemDetailWidget(QWidget):
     """Shared 'left = clean item image, right = details + enchant slider'
     panel, used both by the click-popup and the loadout window."""
@@ -1480,6 +1537,17 @@ class ItemDetailWidget(QWidget):
         self.info_label = QLabel()
         self.info_label.setObjectName("DetailInfo")
         self.info_label.setWordWrap(True)
+
+        # Big right-aligned GearScore badge in the header band (User-
+        # approved mockup, 2026-09-11) -- browse-only Item Database popup
+        # only; the Build Planner's compact panel keeps showing GearScore
+        # inline with the other main-stats lines (see _render_stats).
+        # Reuses the app's existing #GearScoreHeaderLabel look (already
+        # used elsewhere) instead of inventing a new style.
+        self.gearscore_badge_label = QLabel()
+        self.gearscore_badge_label.setObjectName("GearScoreHeaderLabel")
+        self.gearscore_badge_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        self.gearscore_badge_label.setVisible(False)
 
         self.main_stats_label = QLabel()
         self.main_stats_label.setObjectName("DetailInfo")
@@ -1636,34 +1704,57 @@ class ItemDetailWidget(QWidget):
             outer.addWidget(self.disclaimer_label)
             outer.addStretch()
         else:
-            # Side-by-side: icon+title on the left, everything else on the
-            # right — used by the popup dialogs (item-database browser,
-            # equipped-slot detail).
-            layout = QHBoxLayout(self)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(20)
+            # Header band (icon + name/grade/meta) on top, a horizontal
+            # divider, then stats/substats full-width below (User-approved
+            # mockup, 2026-09-11: "Das Layout vom Gearteil finde ich sehr
+            # gut ... Kannst du das Design so übernehmen?", clarified
+            # further: "Du hast im Browser zb eine hori Line. [Icon]
+            # [Allgemeine Infos] -- -- -- Werte + Substats") -- the old
+            # side-by-side icon-left/everything-right split (still fine for
+            # the Build Planner's own compact column above) read as the
+            # exact same component reused, which was the whole point of
+            # this redesign. Only ItemDetailDialog ever builds with
+            # compact=False, so this doesn't touch the Build Planner.
+            #
+            # name_label (the small name under the icon in the old split)
+            # is redundant here -- the name already leads header_label,
+            # bigger and to the right of the icon -- so it's parented but
+            # kept invisible/unused in this branch instead of shown twice.
+            self.name_label.setParent(self)
+            self.name_label.setVisible(False)
 
-            left = QVBoxLayout()
-            left.setSpacing(8)
-            left.addWidget(self.icon_label, 0, Qt.AlignCenter)
-            left.addWidget(self.name_label)
-            left.addStretch()
-            layout.addLayout(left)
+            outer = QVBoxLayout(self)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.setSpacing(14)
 
-            right = QVBoxLayout()
-            right.setSpacing(6)
-            right.addWidget(self.header_label)
-            right.addWidget(self.info_label)
-            right.addWidget(self.main_stats_label)
-            right.addWidget(self.substats_header_label)
-            right.addWidget(self.substats_tabs)
-            right.addWidget(self.philosopher_stone_btn)
-            right.addWidget(self.substats_status_label)
-            right.addWidget(self.skills_label)
-            right.addLayout(self.enchant_row)
-            right.addWidget(self.disclaimer_label)
-            right.addStretch()
-            layout.addLayout(right, 1)
+            head_row = QHBoxLayout()
+            head_row.setSpacing(20)
+            head_row.addWidget(self.icon_label, 0, Qt.AlignTop)
+
+            info_col = QVBoxLayout()
+            info_col.setSpacing(6)
+            info_col.addWidget(self.header_label)
+            info_col.addWidget(self.info_label)
+            info_col.addStretch()
+            head_row.addLayout(info_col, 1)
+            head_row.addWidget(self.gearscore_badge_label, 0, Qt.AlignTop)
+            outer.addLayout(head_row)
+
+            divider = QFrame()
+            divider.setObjectName("DetailHeaderDivider")
+            divider.setFrameShape(QFrame.HLine)
+            divider.setFixedHeight(1)
+            outer.addWidget(divider)
+
+            outer.addWidget(self.main_stats_label)
+            outer.addWidget(self.substats_header_label)
+            outer.addWidget(self.substats_tabs)
+            outer.addWidget(self.philosopher_stone_btn)
+            outer.addWidget(self.substats_status_label)
+            outer.addWidget(self.skills_label)
+            outer.addLayout(self.enchant_row)
+            outer.addWidget(self.disclaimer_label)
+            outer.addStretch()
 
         self._set_enchant_controls_visible(False)
 
@@ -1792,26 +1883,80 @@ class ItemDetailWidget(QWidget):
         self._detail = detail
         grade_name = detail.get("gradeName") or detail.get("grade") or ""
         category = detail.get("categoryName", "")
-        header = " · ".join(p for p in (grade_name, category) if p)
-        self.header_label.setText(f"{detail.get('name', '')}<br><span style='font-weight:400;font-size:12px;'>{header}</span>")
+        sub_header = " · ".join(p for p in (grade_name, category) if p)
+        if self._selectable:
+            self.header_label.setText(
+                f"{detail.get('name', '')}<br><span style='font-weight:400;font-size:12px;'>{sub_header}</span>"
+            )
+        else:
+            # Grade-colored bullet line (User-approved mockup, 2026-09-11)
+            # -- browse-only Item Database popup only; matches the app's
+            # own GRADE_COLORS instead of the Build Planner's plain grey
+            # subtitle.
+            grade_color = GRADE_COLORS.get(detail.get("grade"), "#94a3b8")
+            self.header_label.setText(
+                f"{html.escape(detail.get('name', ''))}<br>"
+                f"<span style='color:{grade_color}; font-weight:700; font-size:13px;'>"
+                f"&#9679; {html.escape(sub_header)}</span>"
+            )
 
-        info_lines = []
-        if detail.get("equipLevel"):
-            info_lines.append(f"Required Level: {detail['equipLevel']}")
         sockets = []
         if detail.get("magicStoneSlotCount"):
             sockets.append(f"{detail['magicStoneSlotCount']} Manastone")
         if detail.get("godStoneSlotCount"):
             sockets.append(f"{detail['godStoneSlotCount']} Godstone")
-        if sockets:
-            info_lines.append(" / ".join(sockets))
-        sources = detail.get("sources") or []
-        if sources:
-            info_lines.append(f"Quelle: {', '.join(sources)}")
+
+        if not self._selectable:
+            # Meta info as a small label/value grid (User-approved mockup)
+            # instead of one stacked vertical list -- reads faster and
+            # matches the mockup's "Req. Level / Sockets / Tradable" row
+            # plus "Source" underneath. Same underlying fields/values as
+            # the Build Planner's plain-list branch below, just arranged
+            # differently for the wider browse popup.
+            def meta_cell(label: str, value: str) -> str:
+                return (
+                    "<td style='padding-right:26px;'>"
+                    f"<span style='color:{_DETAIL_CAPTION_COLOR};'>{html.escape(label)}</span> "
+                    f"<b style='color:#e6ecf5;'>{html.escape(value)}</b></td>"
+                )
+
+            # Real bug found + fixed (User-reported, 2026-09-11, screenshot:
+            # "Required Level"/"Sockets"/"Tradable" in English next to
+            # "Ja"/"Quelle" in German at the same time) -- these were all
+            # hardcoded literals instead of going through _t() like the
+            # rest of the app; routed through translations now so they
+            # follow the active language consistently (same underlying
+            # fix applied to the Build Planner's vertical-list branch
+            # below, which had the identical mixed-language bug).
+            yes_no = _t("arm_yes") if detail.get("tradable") else _t("arm_no")
+            cells = []
+            if detail.get("equipLevel"):
+                cells.append(meta_cell(_t("arm_required_level_label"), str(detail["equipLevel"])))
+            if sockets:
+                cells.append(meta_cell(_t("arm_sockets_label"), " / ".join(sockets)))
+            cells.append(meta_cell(_t("arm_col_tradable"), yes_no))
+            sources = detail.get("sources") or []
+            source_value = ", ".join(sources) if sources else _t("arm_unknown")
+
+            self.info_label.setText(
+                "<table cellpadding='0' cellspacing='0' style='margin-top:2px;'><tr>"
+                + "".join(cells) + "</tr>"
+                f"<tr><td colspan='{max(len(cells), 1)}' style='padding-top:4px;'>"
+                f"<span style='color:{_DETAIL_CAPTION_COLOR};'>{html.escape(_t('arm_source_label'))}</span> "
+                f"<b style='color:#e6ecf5;'>{html.escape(source_value)}</b></td></tr></table>"
+            )
         else:
-            info_lines.append("Quelle: unbekannt")
-        info_lines.append(f"Handelbar: {'Ja' if detail.get('tradable') else 'Nein'}")
-        self.info_label.setText("<br>".join(info_lines))
+            yes_no = _t("arm_yes") if detail.get("tradable") else _t("arm_no")
+            info_lines = []
+            if detail.get("equipLevel"):
+                info_lines.append(f"{_t('arm_required_level_label')}: {detail['equipLevel']}")
+            if sockets:
+                info_lines.append(" / ".join(sockets))
+            sources = detail.get("sources") or []
+            source_value = ", ".join(sources) if sources else _t("arm_unknown")
+            info_lines.append(f"{_t('arm_source_label')}: {source_value}")
+            info_lines.append(f"{_t('arm_col_tradable')}: {yes_no}")
+            self.info_label.setText("<br>".join(info_lines))
 
         # Real API bug found via user report: accessories (Ring/Earrings/
         # Necklace/...) come back with type "Accessory", not "Equip", even
@@ -1866,6 +2011,8 @@ class ItemDetailWidget(QWidget):
     def _render_stats(self):
         if not self._detail:
             return
+
+        self.gearscore_badge_label.setVisible(False)
 
         # Enchantment only ever boosts the ONE main stat that has a min~max
         # range (Attack for weapons, the analogous defensive stat for
@@ -1935,19 +2082,65 @@ class ItemDetailWidget(QWidget):
                 f"padding:2px 8px; border-radius:6px; font-weight:700; font-size:11px;'>{text}</span>"
             )
 
+        def stat_chip_row_html(stat_lines: list[str]) -> str:
+            # Browse-only Item Database popup only (User-approved mockup,
+            # 2026-09-11: "Das Layout vom Gearteil finde ich sehr gut ...
+            # Kannst du das Design so übernehmen?") -- a horizontal row of
+            # small chips instead of a vertical "Label: value" list, since
+            # this dialog now has real width to spend (see
+            # _lord_values_content_width/_auto_fit_columns work earlier the
+            # same day for the analogous "use the width you have" theme on
+            # the main table). The Build Planner's compact equip column
+            # keeps the original vertical list -- narrower there by design.
+            cells = []
+            for line in stat_lines:
+                label, sep, value = line.partition(":")
+                if not sep:
+                    # A line that isn't "Label: value" (shouldn't normally
+                    # happen for real main stats, but never silently drop
+                    # content if it does) -- show as its own full chip.
+                    cells.append(f"<td style='padding:3px 6px;'>{line}</td>")
+                    continue
+                cells.append(
+                    "<td style='padding:3px 6px;'>"
+                    "<table cellpadding='0' cellspacing='0' style='background-color:rgba(30,41,59,0.65); "
+                    "border:1px solid rgba(100,116,139,0.35); border-radius:8px;'><tr><td style='padding:5px 14px;'>"
+                    f"<span style='font-size:9px; color:{_DETAIL_CAPTION_COLOR}; letter-spacing:1px;'>{html.escape(label.strip().upper())}</span><br>"
+                    f"<span style='font-size:13px; font-weight:700; color:#e6ecf5;'>{value.strip()}</span>"
+                    "</td></tr></table></td>"
+                )
+            return "<table cellpadding='0' cellspacing='0'><tr>" + "".join(cells) + "</tr></table>"
+
         lines = []
         main_stats = self._detail.get("mainStats") or []
         if main_stats:
             item_level = self._detail.get("level")
             if item_level:
                 gearscore_push = _gearscore_push(self._enchant_level, normal_max)
-                if gearscore_push:
+                if not self._selectable:
+                    # Header badge instead of an inline text line (User-
+                    # approved mockup) -- the enchant slider (and so
+                    # gearscore_push) is hidden entirely in this browse-
+                    # only popup anyway (see below), so this is always just
+                    # the flat catalog GearScore.
+                    self.gearscore_badge_label.setText(
+                        f"<div align='right'><span style='color:#22d3ee; font-size:26px; font-weight:800;'>"
+                        f"{_format_number(item_level)}</span></div>"
+                        f"<div align='right'><span style='color:{_DETAIL_CAPTION_COLOR}; font-size:9px; "
+                        "letter-spacing:1.5px;'>GEARSCORE</span></div>"
+                    )
+                    self.gearscore_badge_label.setVisible(True)
+                elif gearscore_push:
                     lines.append(f"<b>GearScore: {_format_number(item_level)} (+{_format_number(gearscore_push)})</b>")
                 else:
                     lines.append(f"<b>GearScore: {_format_number(item_level)}</b>")
 
-            lines.append("<b>Main Stats</b>")
-            lines.extend(main_stat_line(s) for s in main_stats)
+            main_stat_lines = [main_stat_line(s) for s in main_stats]
+            if self._selectable:
+                lines.append("<b>Main Stats</b>")
+                lines.extend(main_stat_lines)
+            else:
+                lines.append(stat_chip_row_html(main_stat_lines))
 
             orange = "color:#f59e0b;"
             if is_armor:
@@ -2159,9 +2352,49 @@ class ItemDetailWidget(QWidget):
                 check_icon_label.setFixedSize(0, 0)
                 check_icon_label.setVisible(False)
 
-            label = QLabel(text)
-            label.setObjectName("DetailInfo")
-            row_layout.addWidget(label, 1)
+            # Real bug found + fixed (User-reported, 2026-09-11, screenshots:
+            # "Combat Speed: 15.3% ·" and "Weapon Damage Boost:" with its
+            # value missing entirely) -- a freshly constructed QLabel's own
+            # .font() still reports Qt's default font, not #DetailInfo's
+            # real 13px from the app stylesheet (that only applies once the
+            # widget is actually polished/shown) -- measuring against the
+            # too-small default font under-measured the real rendered
+            # width. Building an explicit QFont matching the QSS rule
+            # instead of trusting label.font() at construction time.
+            measure_font = QFont(row_btn.font())
+            measure_font.setPixelSize(_DETAIL_INFO_FONT_PIXEL_SIZE)
+            text_metrics = QFontMetrics(measure_font)
+
+            if self._selectable:
+                label = QLabel(text)
+                label.setObjectName("DetailInfo")
+                row_layout.addWidget(label, 1)
+            else:
+                # Label left / value right-aligned with a stretch between
+                # them (User-approved mockup, 2026-09-11) -- a single
+                # "Label: value" QLabel can't right-align just the number,
+                # so this splits into two labels instead, matching the
+                # mockup's card look. Skill rows (no ": value" at all) just
+                # show as a single left label, same as before.
+                key_text, sep, value_text = text.partition(":")
+                key_label = QLabel(key_text.strip() if sep else text)
+                key_label.setObjectName("DetailInfo")
+                row_layout.addWidget(key_label, 0)
+                row_layout.addStretch(1)
+                if sep:
+                    value_label = QLabel(value_text.strip())
+                    value_label.setObjectName("DetailInfoValue")
+                    row_layout.addWidget(value_label, 0)
+
+            if not self._selectable:
+                # Fixed height per the user's own test formula (User-
+                # Wunsch, 2026-09-11: "Texthöhe + (paddingTop/Bottom 2)")
+                # and a minimum width from the SAME (now-fixed) font
+                # measurement -- only applies to the browse-only Item
+                # Database popup; the Build Planner's checkable
+                # #SubstatRow keeps its original sizing untouched.
+                row_btn.setMinimumWidth(text_metrics.horizontalAdvance(text) + 32)
+                row_btn.setFixedHeight(text_metrics.height() + 4)
 
             if self._selectable:
                 row_btn.toggled.connect(lambda checked, i=idx: self._on_substat_toggled(i, checked))
@@ -2174,7 +2407,17 @@ class ItemDetailWidget(QWidget):
                 _t("arm_slot_hint", rolled=self._sub_stat_count, total=total_options)
                 if self._sub_stat_count else ""
             )
-            self.substats_header_label.setText(_t("arm_possible_substats_html", slot_hint=slot_hint))
+            possible_substats_html = _t("arm_possible_substats_html", slot_hint=slot_hint)
+            if not self._selectable:
+                # Real bug found (User-reported, 2026-09-11, screenshot:
+                # "Die Schriftart ist hier kaum lesbar") -- boosted
+                # contrast/size specifically for the wider browse-only
+                # Item Database popup; the Build Planner's narrower compact
+                # column keeps the original #DetailInfo styling.
+                possible_substats_html = (
+                    f"<span style='font-size:12.5px; color:#aab4c8;'>{possible_substats_html}</span>"
+                )
+            self.substats_header_label.setText(possible_substats_html)
             buckets = {"offensive": [], "defensive": [], "pvp": []}
             for i, s in enumerate(sub_stats):
                 if self._only_show_selected and i not in self._selected_substats:
@@ -2217,6 +2460,11 @@ class ItemDetailWidget(QWidget):
                 header_btn.toggled.connect(_on_toggled)
                 return grid
 
+            # More columns for the browse-only Item Database popup (User-
+            # approved mockup, 2026-09-11) -- it now has real width to
+            # spend; the Build Planner's narrower compact column keeps 2.
+            grid_columns = 2 if self._selectable else 3
+
             bucket_meta = [
                 ("offensive", _t("arm_badge_offensive"), "56,189,248"),
                 ("defensive", _t("arm_badge_defensive"), "74,222,128"),
@@ -2229,7 +2477,7 @@ class ItemDetailWidget(QWidget):
                 grid = add_accordion_section(self.substats_layout, key, badge_text, color, entries)
                 for pos, (i, stat) in enumerate(entries):
                     row_btn = make_substat_row(i, sub_stat_line(stat))
-                    grid_row, grid_col = divmod(pos, 2)
+                    grid_row, grid_col = divmod(pos, grid_columns)
                     grid.addWidget(row_btn, grid_row, grid_col)
 
             if self._skill_options:
@@ -2251,7 +2499,7 @@ class ItemDetailWidget(QWidget):
                     grid = add_accordion_section(skill_target_layout, skill_key, skill_badge_text, "250,204,21", visible_skills)
                     for pos, (idx, skill) in enumerate(visible_skills):
                         row_btn = make_substat_row(idx, skill.get("name", ""))
-                        grid_row, grid_col = divmod(pos, 2)
+                        grid_row, grid_col = divmod(pos, grid_columns)
                         grid.addWidget(row_btn, grid_row, grid_col)
         else:
             self.substats_header_label.setText("")
@@ -20087,12 +20335,106 @@ class LoadoutWindow(QMainWindow):
         super().closeEvent(event)
 
 
+_LORD_VALUES_HIGHLIGHT_COLOR = "#22d3ee"  # matches the app-wide accent (styles.qss)
+
+
+class _LordValuesHighlightDelegate(QStyledItemDelegate):
+    """Picks out whichever Lord name(s) the user is actively filtering by
+    (User-Wunsch, 2026-09-11: "wenn ich 'Illusion' anwähle, können wir dann
+    in der Spalte der Lord Werte den Namen 'Illusion' farblich ändern,
+    sodass es schnell raussticht?") directly inside the comma-joined Lord
+    Values cell text -- e.g. filtering by "Illusion" turns
+    "Life 5, Wisdom 5, Illusion 5" into the same text with just "Illusion 5"
+    picked out in the app's own accent color, so the exact match that made
+    THIS row show up in the first place is visible at a glance instead of
+    having to re-read the whole comma list every time.
+
+    Renders via QTextDocument (small inline HTML) rather than a manual
+    multi-color drawText -- this is the one cell in the whole table where
+    a single row's text can need more than one color at once."""
+
+    def __init__(self, window: "ItemDatabaseWindow", parent=None):
+        super().__init__(parent)
+        self._window = window
+
+    def paint(self, painter, option, index):
+        text = index.data() or ""
+        active_labels = {
+            _PANTHEON_LORD_DISPLAY.get(k, k) for k in self._window.proxy.pantheon_lord_filter
+        }
+        if not active_labels or not text:
+            super().paint(painter, option, index)
+            return
+
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        style = opt.widget.style() if opt.widget else QApplication.style()
+        # Paint the cell's background/selection state as usual, but blank
+        # out Qt's own text -- the QTextDocument below draws the (rich)
+        # text in its place instead.
+        base_text_color = opt.palette.color(
+            QPalette.HighlightedText if (opt.state & QStyle.State_Selected) else QPalette.Text
+        )
+        opt.text = ""
+        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
+
+        parts = []
+        for part in text.split(", "):
+            escaped = html.escape(part)
+            # Format is always "<Label> <value>" (see the Lord Values cell
+            # construction) -- compare only the first word so "Illusion"
+            # never accidentally matches inside some longer unrelated word.
+            if part.split(" ", 1)[0] in active_labels:
+                parts.append(f'<span style="color:{_LORD_VALUES_HIGHLIGHT_COLOR}; font-weight:600;">{escaped}</span>')
+            else:
+                parts.append(escaped)
+
+        doc = QTextDocument()
+        doc.setDefaultFont(opt.font)
+        doc.setDefaultStyleSheet(f"body {{ color: {base_text_color.name()}; }}")
+        # Real bug found + fixed (User-reported, 2026-09-11, screenshot: a
+        # row's Lord Values wrapped onto a 2nd line for just the trailing
+        # "5") -- setTextWidth() to the cell's own width makes QTextDocument
+        # WRAP at that width, and its own text-layout metrics don't always
+        # agree pixel-for-pixel with the QFontMetrics measurement the
+        # column's width was computed from, so a value landing exactly at
+        # the edge could wrap. Normal (non-highlighted) cells never wrap --
+        # forcing NoWrap here matches that and keeps every row single-line;
+        # the surrounding clip still protects against the rare case where
+        # rendering genuinely overflows the cell instead.
+        text_option = QTextOption()
+        text_option.setWrapMode(QTextOption.NoWrap)
+        doc.setDefaultTextOption(text_option)
+        doc.setHtml(f"<body>{', '.join(parts)}</body>")
+
+        painter.save()
+        painter.setClipRect(opt.rect)
+        y_offset = (opt.rect.height() - doc.size().height()) / 2
+        painter.translate(opt.rect.left() + 4, opt.rect.top() + y_offset)
+        doc.drawContents(painter)
+        painter.restore()
+
+
 class ItemTableView(QTableView):
     """QTableView with a rich, async-loaded tooltip on the Name column."""
 
     def __init__(self, window: "ItemDatabaseWindow", parent=None):
         super().__init__(parent)
         self._window = window
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Real bug found + fixed (User-reported, 2026-09-11: the last
+        # column's right edge should stay pinned to the table's own right
+        # edge, "genauso wie der linke Rand beim Icon", but a visible gap
+        # opened up after a window resize) -- _auto_fit_columns() was only
+        # ever invoked from category-switch/initial-load, never on an
+        # actual resize, so its "fill the leftover space" pass kept using
+        # a STALE viewport width from whenever it last ran. `self.model`
+        # doesn't exist yet the first time Qt fires this (during __init__,
+        # before the model/proxy are built) -- guarded below.
+        if getattr(self._window, "model", None) is not None:
+            self._window._auto_fit_columns()
 
     def viewportEvent(self, event):
         if event.type() == QEvent.ToolTip:
@@ -20299,15 +20641,17 @@ class ItemDatabaseWindow(QMainWindow):
         self.search_input.textChanged.connect(self._on_search_changed)
 
         # Editable+read-only line edit so the collapsed field can show a
-        # descriptive label ("Category"/"Class") instead of "All" -- "All"
-        # itself only ever appears as a real, selectable row inside the
-        # opened dropdown list (User-Wunsch: Label nur oben im Feld, "All"
-        # nur unten in der Liste, nie beides gleichzeitig an derselben
-        # Stelle). Real filter values are read via itemText(index), not the
+        # descriptive "All X" label (e.g. "All Categories") instead of the
+        # bare unqualified "All" -- (User-Wunsch, 2026-09-11, screenshot of
+        # the Shop filter showing plain "All": "kannst du hier bitte statt
+        # 'All' 'All Locations' einfügen? Bei Category -> All Categories").
+        # "All" as a bare word only ever appears as a real, selectable row
+        # inside the opened dropdown list, never in the collapsed field.
+        # Real filter values are read via itemText(index), not the
         # (overridden) displayed text, so the label swap never leaks into
         # the actual filtering logic.
-        self.category_combo = self._make_label_combo(_t("arm_filter_category"), self._on_category_changed)
-        self.shop_combo = self._make_label_combo(_t("arm_filter_shop"), self._on_shop_changed)
+        self.category_combo = self._make_label_combo(_t("arm_all_categories"), self._on_category_changed)
+        self.shop_combo = self._make_label_combo(_t("arm_filter_all_shop"), self._on_shop_changed)
 
         # Wings-only replacements for Category/Shop (User-Wunsch) -- Wings
         # items have no Category/Shop distinction that matters (all share
@@ -20316,8 +20660,8 @@ class ItemDatabaseWindow(QMainWindow):
         # _parse_wing_effects). These sit in the exact same two layout
         # slots as category_combo/shop_combo and swap in only while the
         # sidebar's "Wings" group is active (see _on_sidebar_group_selected).
-        self.wing_equip_combo = self._make_label_combo(_t("arm_filter_equip_effect"), self._on_wing_equip_changed)
-        self.wing_owned_combo = self._make_label_combo(_t("arm_filter_owned_effect"), self._on_wing_owned_changed)
+        self.wing_equip_combo = self._make_label_combo(_t("arm_filter_all_equip_effect"), self._on_wing_equip_changed)
+        self.wing_owned_combo = self._make_label_combo(_t("arm_filter_all_owned_effect"), self._on_wing_owned_changed)
         self.wing_equip_combo.setVisible(False)
         self.wing_owned_combo.setVisible(False)
 
@@ -20427,17 +20771,25 @@ class ItemDatabaseWindow(QMainWindow):
         self.table.setMouseTracking(True)
         self.table.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        # stretchLastSection already makes the last column absorb all
-        # remaining width, so there's never real content to scroll to --
-        # only a few px of Qt's own internal stretch-rounding leftover
-        # (confirmed via a headless repro: horizontalScrollBar().maximum()
-        # == 3px). Without this, that residue still shows a technically-
-        # functional scrollbar that can only crawl those few px (User-
-        # reported, 2026-09-03: "wofuer ist hier ein hori Scrollbalken
-        # gelandet, wenn dieser nur 0.5mm hin und her scrollt?").
+        # Real bug found + fixed (User-reported, 2026-09-11, screenshots:
+        # "Tradable" -- which only ever needs to fit "Yes"/"No" -- was
+        # stretched to soak up HALF the table's width while Name/Category
+        # got squeezed and truncated with "..." right next to it).
+        # stretchLastSection blindly gives 100% of any leftover space to
+        # whichever column happens to be last, regardless of whether it
+        # actually needs it. _auto_fit_columns() now owns every column's
+        # width itself (content-based, viewport-aware), so forcing the last
+        # one to stretch on top of that would silently re-introduce the
+        # exact same imbalance. ScrollBarAlwaysOff below still covers the
+        # original reason stretchLastSection was added in the first place
+        # (User-reported, 2026-09-03: a horizontal scrollbar that only
+        # crawled ~3px of Qt's own internal stretch-rounding leftover) --
+        # with the last column no longer force-stretched, there's nothing
+        # left to produce that residue either.
+        self.table.horizontalHeader().setStretchLastSection(False)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.verticalHeader().setVisible(False)
+        self.table.setItemDelegateForColumn(LORD_VALUES_COLUMN, _LordValuesHighlightDelegate(self, self.table))
 
         # Right-hand category sidebar (User-Wunsch) -- one exclusive pill
         # per top-level group (_ITEM_TOP_CATEGORIES, "Gear" nesting
@@ -20457,7 +20809,8 @@ class ItemDatabaseWindow(QMainWindow):
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(12, 12, 12, 12)
         sidebar_layout.setSpacing(6)
-        sidebar_title = QLabel(_t("arm_categories_label"))
+        self._categories_sidebar_title = QLabel(_t("arm_categories_label"))
+        sidebar_title = self._categories_sidebar_title
         sidebar_title.setObjectName("EquipSectionLabel")
         sidebar_layout.addWidget(sidebar_title)
 
@@ -20483,7 +20836,7 @@ class ItemDatabaseWindow(QMainWindow):
             # text -- group_label itself (used for lookups/comparisons
             # everywhere else, e.g. _on_sidebar_group_selected) stays the
             # real, un-escaped string.
-            btn = QPushButton(group_label.replace("&", "&&"))
+            btn = QPushButton(_category_group_display_text(group_label).replace("&", "&&"))
             btn.setObjectName("SkillFilterButton")
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked=False, l=group_label: self._on_sidebar_group_selected(l))
@@ -20497,6 +20850,8 @@ class ItemDatabaseWindow(QMainWindow):
         # No sidebar group selected yet -- the Category dropdown still lists
         # every raw categoryName directly, exactly like before this feature.
         self._current_sidebar_group: str | None = None
+        # Cache for _lord_values_content_width() -- see that method.
+        self._lord_values_max_text_width: int | None = None
 
         root_row = QHBoxLayout()
         root_row.setSpacing(14)
@@ -20718,11 +21073,50 @@ class ItemDatabaseWindow(QMainWindow):
         _populate_filter_combo already read through _t() at call time where
         applicable). Reopening the window always guarantees a fully
         up-to-date language throughout, same caveat as LoadoutWindow's own
-        update_language()."""
+        update_language().
+
+        Real bug found + fixed (User-reported, 2026-09-11, screenshots: the
+        main table's column headers and the Categories sidebar buttons
+        stayed in English regardless of the selected language): the column
+        headers were only ever set ONCE, at model-construction time, and
+        the sidebar buttons never called _t() at all (see
+        _category_group_display_text). Both are re-applied here now."""
         self.setWindowTitle(_t("arm_item_database_title"))
         self.search_input.setPlaceholderText(_t("arm_search_by_name_placeholder"))
         self.show_id_check.setText(_t("arm_show_item_id"))
+        self.model.setHorizontalHeaderLabels([
+            _t("arm_col_icon"), _t("arm_col_id"), _t("arm_col_name"), _t("arm_grade_label"),
+            _t("arm_col_category"), _t("arm_col_tradable"), _t("arm_col_pvp_pve"),
+            _t("arm_col_lord_values"),
+        ])
+        if hasattr(self, "_categories_sidebar_title"):
+            self._categories_sidebar_title.setText(_t("arm_categories_label"))
+        if hasattr(self, "_category_group_buttons"):
+            all_btn = self._category_group_buttons.get("All Categories")
+            if all_btn is not None:
+                all_btn.setText(_t("arm_all_categories"))
+            for group_label, btn in self._category_group_buttons.items():
+                if group_label == "All Categories":
+                    continue
+                btn.setText(_category_group_display_text(group_label).replace("&", "&&"))
+        self._retranslate_filter_combo_label(self.category_combo, _t("arm_all_categories"))
+        self._retranslate_filter_combo_label(self.shop_combo, _t("arm_filter_all_shop"))
+        self._retranslate_filter_combo_label(self.wing_equip_combo, _t("arm_filter_all_equip_effect"))
+        self._retranslate_filter_combo_label(self.wing_owned_combo, _t("arm_filter_all_owned_effect"))
         self._update_result_label()
+
+    @staticmethod
+    def _retranslate_filter_combo_label(combo: QComboBox, new_label: str):
+        """Keeps a `_make_label_combo` field's "All X" placeholder in sync
+        with the active language -- same staleness bug class as the table
+        headers/sidebar above (label was previously only ever set once, at
+        construction time). Only touches the visible text while the combo
+        is still on its default "All" row (index<=0); a real, active
+        selection's own displayed text is never overwritten by a language
+        change."""
+        combo.setProperty("filterLabel", new_label)
+        if combo.currentIndex() <= 0 and combo.lineEdit():
+            combo.lineEdit().setText(new_label)
 
     def get_loadout_state(self) -> dict | None:
         """Called by the host app's save_profile(). Reads the live
@@ -20779,6 +21173,213 @@ class ItemDatabaseWindow(QMainWindow):
         self.proxy.set_wing_owned_filter(None if text == "All" else text)
         self._update_result_label()
 
+    def _lord_values_content_width(self, cell_font_metrics: QFontMetrics, header_floor: int) -> int:
+        """Lord Values' natural width is measured against the FULL,
+        unfiltered catalog (self.model), not just whatever the Pantheon
+        Lord filter currently narrows the proxy down to.
+
+        Real bug found + fixed (User-reported, 2026-09-11, screenshot pair:
+        the same rows showed full "Life 5, Wisdom 5, Destiny 5, Illusion 5"
+        text at one window size but truncated to "Life 5, Wisdom 5, ..." at
+        another): measuring only the currently-filtered proxy meant the
+        column's own computed width could shrink whenever a filter/search
+        happened to hide the rows with the longest combinations, then not
+        grow back for a row that still needed it. A Pantheon item can carry
+        up to 4 Lord values at once -- using the full catalog's own widest
+        real combination as a stable floor ("die Gesamtlänge von 4 Werten
+        ... als Mindestlänge nutzen") means this column's width no longer
+        depends on -- or visibly jumps around with -- the active filter.
+        Cached after the first scan since the full catalog never changes at
+        runtime and this column's data won't either; recomputing a 7000+
+        row scan on every resize (this now runs on every resize, see
+        ItemTableView.resizeEvent) would be wasteful."""
+        if self._lord_values_max_text_width is None:
+            widest = header_floor - _COLUMN_WIDTH_BUFFER
+            for row in range(self.model.rowCount()):
+                text = self.model.index(row, LORD_VALUES_COLUMN).data()
+                if text:
+                    widest = max(widest, cell_font_metrics.horizontalAdvance(str(text)))
+            self._lord_values_max_text_width = widest
+        return self._lord_values_max_text_width
+
+    def _auto_fit_columns(self):
+        """Resizes every currently VISIBLE column to fit its WIDEST actual
+        entry plus a small buffer -- same idea as Excel's own "double-click
+        the column border" autofit (User-Wunsch, 2026-09-11: "kannst du die
+        längstmöglichen Einträge nehmen und anhand dessen die Spalte
+        setzen? ... in Excel via Doppelklick ... automatisch die Breite an
+        das breiteste anpassen").
+
+        Real bug found + fixed in the first version of this method: Qt's
+        own QTableView.resizeColumnsToContents() only measures rows that
+        have actually been LAID OUT (roughly the visible viewport, not the
+        full model) -- fine for a short list, but with thousands of rows it
+        silently left long values like "Wings Unlocking Item" truncated
+        (User-reported, screenshot: "Wings Unlocki..." cut off in the
+        Category column) since the row holding the longest text was never
+        laid out. Fixed by measuring every row's actual text width via
+        QFontMetrics directly against the CURRENT proxy (the filtered/
+        sorted view the user is actually looking at, not the full 10k-item
+        source model) instead of relying on Qt's own heuristic.
+
+        Each column's OWN ideal width is capped at _COLUMN_MAX_WIDTH_CHARS
+        worth of average-character width (User-Wunsch: "vielleicht bei
+        ultra langen Rezepten/Namen, dass man sich auf eine maximale
+        Zeichenanzahl begrenzt") -- a single outlier item/recipe name long
+        enough to blow its column out shows "..." via Qt's own default
+        eliding instead of dragging the whole table sideways; the full
+        text is still in the cell's own tooltip.
+
+        On top of that, the whole ROW of ideal widths is checked against
+        the table's actual available width (User-Wunsch, 2026-09-11, after
+        screenshots showed "Tradable" -- which only ever needs to fit
+        "Yes"/"No" -- forced to stretch across half the table while Name/
+        Category got squeezed and truncated right next to it: "kannst du
+        relativ zur gesamten Breite der Tabelle schauen, wie viel Platz
+        ist, und dann die Spalten aufteilen, wo mehr/weniger Platz benötigt
+        wird ... 'längste Zeile + Abstand' bei allen Einträgen möglich?
+        wenn nicht, spare gerade so viel wie notwendig an der längsten
+        Zeile"). If every column's ideal width fits at once, each simply
+        gets exactly that -- no column is ever force-stretched to fill
+        leftover space (see setStretchLastSection(False) above, removed
+        for the same reason). If it DOESN'T all fit, only the actually
+        oversized column(s) give up space, one at a time, always trimming
+        whichever is currently widest down toward the next-widest (or its
+        own floor) -- so a table that's merely a bit too narrow shrinks
+        only the one column that needs it, instead of every column paying
+        an equal, mostly-unnecessary tax."""
+        header_font_metrics = QFontMetrics(self.table.horizontalHeader().font())
+        cell_font_metrics = QFontMetrics(self.table.font())
+        max_cap = cell_font_metrics.averageCharWidth() * _COLUMN_MAX_WIDTH_CHARS
+        row_count = self.proxy.rowCount()
+
+        self.table.setColumnWidth(0, ICON_SIZE + 24)
+        visible_cols = [c for c in range(1, self.model.columnCount()) if not self.table.isColumnHidden(c)]
+
+        ideal: dict[int, int] = {}
+        floor: dict[int, int] = {}
+        natural: dict[int, int] = {}
+        for col in visible_cols:
+            header_text = str(self.model.headerData(col, Qt.Horizontal) or "")
+            # Reserved so the header itself is never the thing that ends up
+            # eliding, regardless of which column the user has sorted by.
+            header_floor = header_font_metrics.horizontalAdvance(header_text) + _COLUMN_HEADER_RESERVE
+            if col == LORD_VALUES_COLUMN:
+                # Measured against the FULL catalog, not the current
+                # (possibly Lord-filtered) proxy -- see
+                # _lord_values_content_width's own docstring.
+                max_width = self._lord_values_content_width(cell_font_metrics, header_floor)
+            else:
+                max_width = header_floor - _COLUMN_WIDTH_BUFFER
+                for row in range(row_count):
+                    text = self.proxy.index(row, col).data()
+                    if text:
+                        max_width = max(max_width, cell_font_metrics.horizontalAdvance(str(text)))
+            ideal[col] = max(min(max_width, max_cap) + _COLUMN_WIDTH_BUFFER, header_floor)
+            # Never shrink a column below its own header (+ sort-indicator
+            # reserve), or the header text itself starts eliding.
+            floor[col] = min(ideal[col], header_floor)
+            # Uncapped true content width -- used later to decide who
+            # actually wants leftover space (a column already showing its
+            # full content unclipped has nothing to gain from growing
+            # further, no matter how proportionally "big" it already is).
+            natural[col] = max(max_width + _COLUMN_WIDTH_BUFFER, header_floor)
+
+        available = self.table.viewport().width() - (ICON_SIZE + 24)
+        deficit = sum(ideal.values()) - available
+
+        widths = dict(ideal)
+        active = [c for c in visible_cols if widths[c] > floor[c]]
+        while deficit > 0 and active:
+            # Shrink every column CURRENTLY TIED for widest together, not
+            # just one of them -- a column that reaches the same width as
+            # its neighbor still needs to keep shrinking alongside it (real
+            # bug found here: shrinking only the single nominal "widest"
+            # column stopped the instant it caught up to a tied neighbor,
+            # even with hundreds of pixels of deficit still unresolved,
+            # because "no gap left to *this* neighbor" was mistaken for
+            # "nothing left to shrink").
+            top_width = max(widths[c] for c in active)
+            group = [c for c in active if widths[c] == top_width]
+            lower = [widths[c] for c in active if widths[c] < top_width]
+            next_level = max(lower) if lower else max(floor[c] for c in group)
+            group_floor = max(floor[c] for c in group)
+            target_level = max(next_level, group_floor)
+            step = top_width - target_level
+            if step <= 0:
+                active = [c for c in active if c not in group]
+                continue
+            room = step * len(group)
+            if room <= deficit:
+                for c in group:
+                    widths[c] = target_level
+                deficit -= room
+            else:
+                # Not enough deficit left to bring the whole group all the
+                # way down to target_level -- split what's left evenly.
+                share, remainder = divmod(deficit, len(group))
+                for i, c in enumerate(group):
+                    widths[c] -= share + (1 if i < remainder else 0)
+                deficit = 0
+            active = [c for c in active if widths[c] > floor[c]]
+
+        # Everything above treats `ideal` (shrunk down if needed) as a
+        # MINIMUM, not a target -- if the table is wider than that, don't
+        # leave the surplus as empty grey space on the right (User-Wunsch,
+        # 2026-09-11: "kannst du die gesamte Breite trotzdem nutzen? die
+        # Spalten können auch größer sein, aber das, was du bislang
+        # kalkuliert hattest, sollte eher die minimale Breite sein").
+        #
+        # Real bug found in the first version of this growth phase:
+        # handing out the surplus proportionally to each column's own
+        # CURRENT width let "Tradable" -- which only ever needs "Yes"/"No"
+        # -- soak up a large, purely proportional share of the leftover
+        # space while "Lord Values" (which can genuinely use it, up to 3
+        # comma-separated entries) still got left eliding with "..."
+        # (User-reported, 2026-09-11, screenshot: "bei 'Tradeable' etwas
+        # Platz wegnehmen - hier sollten die Lordwerte genug Platz haben,
+        # da sollte der Fokus drauf liegen"). Fixed by growing whichever
+        # column's TRUE, uncapped content ("natural") still exceeds what
+        # it's currently been given FIRST -- Tradable's natural width
+        # already equals its current width (nothing left to gain), so it
+        # gets none of this first pass, while Lord Values' natural width
+        # (its longest actual "X 5, Y 5, Z 5" combination) can be much
+        # bigger and soaks up the leftover instead. Only once every
+        # column's real content need is satisfied does any further true
+        # surplus fall back to the old proportional-by-width split, purely
+        # so the table still reaches the full available width edge to
+        # edge.
+        leftover = available - sum(widths.values())
+        if leftover > 0 and visible_cols:
+            want = {c: max(natural[c] - widths[c], 0) for c in visible_cols}
+            total_want = sum(want.values())
+            if total_want > 0:
+                give_now = min(leftover, total_want)
+                hungry = [c for c in visible_cols if want[c] > 0]
+                distributed = 0
+                for i, col in enumerate(hungry):
+                    if i == len(hungry) - 1:
+                        share = give_now - distributed
+                    else:
+                        share = round(give_now * want[col] / total_want)
+                        distributed += share
+                    widths[col] += share
+                leftover -= give_now
+
+        if leftover > 0 and visible_cols:
+            weight_total = sum(widths.values())
+            distributed = 0
+            for i, col in enumerate(visible_cols):
+                if i == len(visible_cols) - 1:
+                    extra = leftover - distributed
+                else:
+                    extra = round(leftover * widths[col] / weight_total)
+                    distributed += extra
+                widths[col] += extra
+
+        for col in visible_cols:
+            self.table.setColumnWidth(col, int(widths[col]))
+
     def _on_sidebar_group_selected(self, group_label: str | None):
         """Right-hand sidebar click (User-Wunsch): narrows the table to one
         top-level group (_ITEM_TOP_CATEGORIES) and repopulates the Category
@@ -20802,6 +21403,13 @@ class ItemDatabaseWindow(QMainWindow):
         self._current_sidebar_group = group_label
         is_wings = group_label == "Wings"
         is_pantheon = group_label == "Pantheon"
+        # PvP/PvE gear-type classification only ever means anything for
+        # actual Gear (User-Wunsch, 2026-09-11: "'PvP/PvE' wird soweit ich
+        # weiß, nur bei 'Gear' benötigt") -- every other category has no
+        # real PvP/PvE split, so the column is just noise there. Stays
+        # visible for "All Categories" too (group_label None), since Gear
+        # items are still mixed in with everything else in that view.
+        is_gear_type_relevant = group_label is None or group_label == "Gear"
 
         self.category_combo.setVisible(not is_wings)
         self.shop_combo.setVisible(not is_wings)
@@ -20810,6 +21418,8 @@ class ItemDatabaseWindow(QMainWindow):
         for w in self._pantheon_lord_row_widgets:
             w.setVisible(is_pantheon)
         self.table.setColumnHidden(LORD_VALUES_COLUMN, not is_pantheon)
+        self.table.setColumnHidden(GEAR_TYPE_COLUMN, not is_gear_type_relevant)
+        self._auto_fit_columns()
         if not is_pantheon:
             # Leaving (or never entering) Pantheon -- clear any leftover
             # Lord filter so it can't silently hide rows in every other
@@ -20874,6 +21484,10 @@ class ItemDatabaseWindow(QMainWindow):
         active = {k for k, b in self.pantheon_lord_buttons.items() if b.isChecked()}
         self.proxy.set_pantheon_lord_filter(active)
         self._update_result_label()
+        # Rows that stay visible still need their Lord Values cell
+        # repainted -- the highlighted name(s) inside it depend on the
+        # filter that just changed, not just which rows are shown.
+        self.table.viewport().update()
 
     def _update_result_label(self):
         shown = self.proxy.rowCount()
@@ -21118,8 +21732,7 @@ class ItemDatabaseWindow(QMainWindow):
         for combo in (self.category_combo, self.shop_combo, self.wing_equip_combo, self.wing_owned_combo):
             combo.setEnabled(True)
 
-        self.table.resizeColumnsToContents()
-        self.table.setColumnWidth(0, ICON_SIZE + 24)
+        self._auto_fit_columns()
         self._update_result_label()
         QTimer.singleShot(0, self._request_visible_icons)
 

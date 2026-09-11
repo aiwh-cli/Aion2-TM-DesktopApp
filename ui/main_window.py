@@ -326,7 +326,6 @@ class MainWindow(QMainWindow):
         self.dps_meter_path = ""
         self.dps_meter_autostart = False
         self.minimize_to_tray = None  # None = not asked yet
-        self.armory_beta_enabled = False  # self-service opt-in, see _update_armory_visibility
         self._avatar_b64 = ""
         self.characters: list = []
 
@@ -994,19 +993,14 @@ class MainWindow(QMainWindow):
         self._update_armory_visibility()
 
     def _update_armory_visibility(self):
-        # Item Database / Crafting Calculator / Build Planner: either
-        # fully released (ARMORY_ENABLED, see core/version.py) or reached
-        # early via the self-service "Beta Bereich freischalten" toggle in
-        # Settings (armory_beta_enabled, opt-in at the user's own risk).
-        # Called both at startup and whenever that setting changes, so the
-        # nav entry updates live without needing a restart.
-        show = ARMORY_ENABLED or self.armory_beta_enabled
-        self.sidebar.buttons["armory"].setVisible(show)
-        self.sidebar.set_armory_beta_marked(show and not ARMORY_ENABLED)
-        logger.debug(
-            "Armory visibility updated: show=%s (ARMORY_ENABLED=%s, armory_beta_enabled=%s)",
-            show, ARMORY_ENABLED, self.armory_beta_enabled,
-        )
+        # Item Database / Crafting Calculator / Build Planner: fully
+        # released now (ARMORY_ENABLED, see core/version.py -- the old
+        # self-service "Beta Bereich freischalten" opt-in toggle in
+        # Settings is gone, since it's no longer needed once this is
+        # permanently True). Marked "(Expert)" in the sidebar rather than
+        # a plain label, since it's still the app's more advanced area.
+        self.sidebar.buttons["armory"].setVisible(ARMORY_ENABLED)
+        self.sidebar.set_armory_expert_marked(ARMORY_ENABLED)
         self.sidebar.update_language(self.language, tr)
 
 
@@ -2175,7 +2169,6 @@ class MainWindow(QMainWindow):
         self.overlay_char_filter = settings.get("overlay_char_filter", "")
 
         self.toggle_events()
-        self.update_countdowns()
 
         self.settings_page.set_profile_name(self.profile_name)
         self.sync_settings_page()
@@ -2265,6 +2258,25 @@ class MainWindow(QMainWindow):
         # Reconcile: add missing cards for templates that are still is_general=True
         self._sync_shopping_from_templates({})
         self._sync_tasks_from_templates({})
+
+        # Real, confirmed data-loss bug found + fixed (User-reported,
+        # 2026-09-10, screenshot: a 122 KB profile got reduced to 23 KB just
+        # from starting the packaged app): update_countdowns() used to run
+        # much earlier in this method (right after settings were read), but
+        # it ends by calling check_auto_resets() -- which, whenever a daily/
+        # weekly reset is actually due (a completely normal, frequent case:
+        # any time more than a day/week has passed since the profile was
+        # last opened), calls save_profile(silent=True) immediately. At that
+        # earlier point self.task_lists/item_templates/task_templates were
+        # NOT yet populated from `data` (see "Aktuelle Listen immer leeren"
+        # above, which runs AFTER where this call used to sit) -- so that
+        # save serialized the STALE, near-empty pre-load state straight over
+        # the real profile file on disk, permanently destroying it. Moving
+        # this call to AFTER the full population above (this exact spot) is
+        # the fix -- reproduced headlessly by loading a synthetic 400-task
+        # profile with no last_daily_reset_date recorded (forcing a reset)
+        # and confirming the file on disk kept its real size afterward.
+        self.update_countdowns()
 
         self.refresh()
         raw_maps = data.get("flow_maps")
@@ -2451,7 +2463,6 @@ class MainWindow(QMainWindow):
                 self.dps_meter_autostart = cfg.get("dps_meter_autostart", False)
                 raw_mtt = cfg.get("minimize_to_tray", None)
                 self.minimize_to_tray = bool(raw_mtt) if raw_mtt is not None else None
-                self.armory_beta_enabled = bool(cfg.get("armory_beta_enabled", False))
                 self._avatar_b64 = cfg.get("avatar", "")
                 custom = cfg.get("profile_dir", "")
                 if custom:
@@ -2475,7 +2486,6 @@ class MainWindow(QMainWindow):
             "dps_meter_path": self.dps_meter_path,
             "dps_meter_autostart": self.dps_meter_autostart,
             "minimize_to_tray": self.minimize_to_tray,
-            "armory_beta_enabled": self.armory_beta_enabled,
             "avatar": self._avatar_b64,
         }
         self.app_config_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
@@ -3838,9 +3848,6 @@ class MainWindow(QMainWindow):
         if "minimize_to_tray" in data:
             self.minimize_to_tray = data["minimize_to_tray"]
 
-        self.armory_beta_enabled = data.get("armory_beta_enabled", self.armory_beta_enabled)
-        self._update_armory_visibility()
-
         old_path = self.dps_meter_path
         self.dps_meter_path = data.get("dps_meter_path", self.dps_meter_path)
         self.dps_meter_autostart = data.get("dps_meter_autostart", self.dps_meter_autostart)
@@ -3890,7 +3897,6 @@ class MainWindow(QMainWindow):
             "dps_meter_path": self.dps_meter_path,
             "dps_meter_autostart": self.dps_meter_autostart,
             "minimize_to_tray": bool(self.minimize_to_tray),
-            "armory_beta_enabled": self.armory_beta_enabled,
 
             "profile_dir": str(self.profile_dir),
         })

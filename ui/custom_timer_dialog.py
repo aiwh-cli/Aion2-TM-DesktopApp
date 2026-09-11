@@ -4,9 +4,11 @@ import winsound
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFrame, QButtonGroup, QGridLayout, QTimeEdit, QWidget, QSpinBox, QComboBox,
-    QTabWidget,
+    QTabWidget, QCompleter,
 )
-from PySide6.QtCore import QTime
+from PySide6.QtCore import QTime, Qt
+
+from ui.pages.settings_page import _ScreenAwareComboBox
 
 CUSTOM_TIMER_COLORS = [
     ("#22d3ee", "ct_color_cyan"),
@@ -396,8 +398,22 @@ class CustomTimerDialog(QDialog):
         sound_row_layout.setContentsMargins(14, 12, 14, 12)
         sound_row_layout.setSpacing(12)
 
-        self.sound_combo = QComboBox()
+        # Real bug found + fixed (User-reported, 2026-09-11, screenshot:
+        # same giant unclamped ~70-sound popup as the general Settings
+        # page's Notification Sound dropdown, "bei den Custom Timer
+        # genauso") -- same fix applied here: capped popup height + a
+        # search-as-you-type completer, plus the same screen-aware popup
+        # positioning fix (multi-monitor setup, see _ScreenAwareComboBox).
+        self.sound_combo = _ScreenAwareComboBox()
         self.sound_combo.setObjectName("settingsCombo")
+        self.sound_combo.setMaxVisibleItems(9)
+        self.sound_combo.setEditable(True)
+        self.sound_combo.setInsertPolicy(QComboBox.NoInsert)
+        sound_completer = self.sound_combo.completer()
+        if sound_completer is not None:
+            sound_completer.setCaseSensitivity(Qt.CaseInsensitive)
+            sound_completer.setFilterMode(Qt.MatchContains)
+            sound_completer.setCompletionMode(QCompleter.PopupCompletion)
         self.sound_combo.addItem(self._tr(self._language, "ct_dialog_no_sound"), "")
         for path in sorted(glob.glob(r"C:\Windows\Media\*.wav")):
             sound_name = os.path.splitext(os.path.basename(path))[0]

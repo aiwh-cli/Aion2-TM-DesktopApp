@@ -24,10 +24,12 @@ class SidebarWidget(QWidget):
         layout.setSpacing(8)
 
         self.buttons = {}
-        # Whether the "armory" nav entry should carry a "(Beta)" suffix --
-        # set by MainWindow._update_armory_visibility(), which owns the
-        # actual visibility/beta logic (this widget just renders labels).
-        self._armory_beta_marked = False
+        # Whether the "armory" nav entry should carry an "(Expert)" suffix
+        # -- set by MainWindow._update_armory_visibility(), which owns the
+        # actual logic (this widget just renders labels). Renamed from
+        # "(Beta)" once Armory left beta and became a permanent feature
+        # (User-Wunsch, 2026-09-10).
+        self._armory_expert_marked = False
 
         for key, translation_key in self.pages.items():
             button = QPushButton(translation_key)
@@ -50,15 +52,16 @@ class SidebarWidget(QWidget):
 
         self.page_changed.emit(page_key)
 
-    def set_armory_beta_marked(self, marked: bool):
-        self._armory_beta_marked = marked
+    def set_armory_expert_marked(self, marked: bool):
+        self._armory_expert_marked = marked
 
     def update_language(self, language: str, tr_func):
         for key, translation_key in self.pages.items():
             label = tr_func(language, translation_key)
-            # Kept as a plain, untranslated "(Beta)" suffix rather than a
-            # new translation key per language, since it's a temporary
-            # marker, not permanent UI copy.
-            if key == "armory" and self._armory_beta_marked:
-                label = f"{label} (Beta)"
+            # Kept as a plain, untranslated "(Expert)" suffix rather than a
+            # new translation key per language, same reasoning as the old
+            # "(Beta)" marker it replaced -- a short, permanent label, not
+            # core UI copy.
+            if key == "armory" and self._armory_expert_marked:
+                label = f"{label} (Expert)"
             self.buttons[key].setText(label)

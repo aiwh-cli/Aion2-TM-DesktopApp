@@ -1,42 +1,23 @@
-# 🧪 Beta Area
+# Version 1.9.9
 
-These features are **not** part of an official update yet and are still under active development. Unlockable at your own risk via Settings → "Unlock Beta Area".
+## ✨ New Features
 
-## Armory
+- **Armory graduates from Beta to a full, permanent feature — renamed "Armory (Expert)".** No more opt-in unlock in Settings; the Item Database, Crafting Calculator, and Build Planner (Daevanion Board, Skill Planner, Arcana, Genius Insight, Pantheon, and everything else built up over the Beta period) are now available to everyone by default. See [README.md](README.md#%EF%B8%8F-armory-expert) for the full feature list.
 
-### Item Database
-- Searchable item database with filters for grade/rarity, category, shop, and PvP/PvE/Neutral gear type.
-- Right-hand Categories sidebar groups the catalog into Gear, Wings, Arcana, Materials & Enhancement, Consumables, Tools & Services, Cosmetics, and Chests & Misc — pick one to narrow the list and the Category filter above it.
-- Gear further breaks down into Weapons / Armor / Accessories via the Category filter.
-- Wings get two dedicated filters (Equip Effect / Owned Effect) in place of Category/Class, matching how Wings stats actually work.
-- Grade/Rarity filter is a row of colored pill buttons (one click, no dropdown needed).
-- Optional "Show Item ID" checkbox to reveal the internal item ID column (hidden by default).
-- Item names are colored by rarity throughout the table.
-- Double-clicking an item shows its full details, including every possible substat/skill it can roll — purely informational here (no picking), since selecting real Soulbinding rolls only makes sense for an actually-equipped item in the Build Planner.
+## 🎨 UI Changes
 
-### Crafting Calculator
-- Shows the full material chain for any craftable item: required ingredients can be expanded individually if they're themselves the result of another recipe.
-- Filter by profession (Blacksmithing, Armorsmithing, Handicrafting, Alchemy, Cooking), category and rarity.
-- Material icons show the matching rarity background (Common/Rare/Unique/Epic/Legend).
-- "Compare" tab compares crafting an item directly versus transferring it from an existing item of the same line, including Kinah cost.
+- **Item Database: item detail popup redesigned** — a wider layout with a proper header band (name, grade, key info, and a prominent GearScore badge), main stats shown as a row of stat chips, and substat cards arranged in a 3-column grid instead of a single narrow list, so long substat names and values are no longer cut off.
+- **Item Database: table columns now size themselves to fit their content and the available window width** — each column sizes to its widest real entry (with a sensible cap so one unusually long name can't blow out the whole table), any extra space goes to whichever column actually needs it instead of one column stretching to fill the row, and the table re-fits itself whenever the window is resized.
+- **Item Database: filtering by a Lord stat now highlights the matching value** directly inside the Lord Values column, so it's obvious at a glance why an item matched.
+- Item Database: several labels and dropdown placeholders that stayed in English regardless of the selected language are now properly translated — the Categories sidebar, the table's column headers, the "All Categories"/"All Locations"/etc. filter dropdowns, and the item detail popup's Required Level/Sockets/Tradable/Source fields.
+- Item Database: the "PvP/PvE" column is now hidden outside the Gear/All Categories view, where it isn't relevant.
+- **Settings: the Notification Sound dropdown (and the matching one in Custom Timer) no longer dumps close to 70 Windows sounds into one giant list** — it's now a reasonable scrollable height, and you can type to search for a sound instead of scrolling through all of them.
+- **Armory landing page: the whole card is now clickable**, not just a small "Open" button next to it.
 
-### Build Planner
-- Assemble a virtual gear loadout slot by slot, with real item stats.
-- Save multiple named gear sets per class (e.g. "Default", "PvP") and switch between them instantly; a Build Compare tab shows two sets side by side, including GearScore and every stat category.
-- GearScore calculated from real item data, including enchant and exceed bonuses.
-- PvP / PvE / Neutral gear filter, linked to a matching toggle on the stat panel — PvP and PvE can now be active at the same time, for building a mixed set.
-- EQ Priority list: set an acquisition/upgrade order per equipment slot; items already on it show as a gold-star favorite (with an "Only favorites" filter) when picking gear normally.
-- Consolidated stat panel (Main Stats, Sub Stats, Offense, Defense, Utility & Recovery, PvE Stats, PvP Stats).
-- "Quick Select" button to auto-equip a full gear set — crafted, dungeon-drop (Expedition) or PvP Abyss Gear, matched to your race — in one click, plus a separate "Property Priority" editor to customize which substats get auto-picked per role and Gear Type.
-- Daevanion Board tab: interactive per-class/deity board (real tier art, checkable stat/skill sidebar, auto-router for the cheapest path to what you've checked), with a "Stats Gained" summary of every stat the board currently grants. Feeds its skill-level bonuses into the Skill Planner and its stat bonuses into the stat panel/GearScore/damage estimate, and persists to your profile.
-- Skill Planner tab: browse/filter class skills (Active/Passive/Stigma), track Skill Points and Stigma Points separately, build a Priority List (remove/favorite/star support), and an Arcana Calculator that finds the best-case Arcana card setup for a wishlist of extra skill levels. Each active skill shows its real per-level damage range, with an optional "Estimated Damage" toggle that scales it by your own current stats.
-- Arcana tab: an Information sub-tab to browse all card types/sets — hover a card for its class skill preview, hover a Set banner for its 2-/4-piece Set bonus — and a Sets sub-tab showing your 5 real equip slots, including each assigned card's Empyrean Lord value; each card's Set, rarity, and individual skill/level assignments can now be set manually as well as via the Arcana Calculator, which also lets you pick which named build to apply a result into (or create a new one). Shares the same named build as the Skill Planner.
-- Genius Insight tab: pick a stat for each of the 9 Lines on all 5 pet boards (with min/max ranges shown per pick and a lock toggle to protect a Line), save multiple named profiles, and see every board's picks totaled — feeding the stat panel and damage estimate the same way gear does.
-- Your core attributes (Might, Dexterity, etc.) and equipped Arcana cards' Empyrean Lord values now feed their real derived bonuses (Attack increase, Evasion increase, Combat Speed, and more) into the stat panel and damage estimate — previously shown but not actually calculated.
-- Each Equip Build can now be linked to a specific Arcana/Skill Planner build and Genius Insight profile, so only that combination counts toward its stat panel/GearScore/damage estimate — useful once you're keeping more than one of each around.
-- Stat panel values now show a hover tooltip breaking down exactly where the number comes from (equipment, grouped into Weapon/Armor/Jewelry, plus Genius Insight, attributes, Arcana Lords, and the Daevanion Board); hovering a core-attribute/Lord value also shows what it feeds into, even at 0.
-- New Pantheon tab: a radial board (12 Artwork slots on the outer ring, 4 Statue slots on a middle ring, 1 Colossus slot in the center), filled from a left-hand inventory panel with search plus Rarity and Lord-value filters — each real item can only occupy one board slot at a time. Equipped Pantheon items' real Lord Points now feed the stat panel, GearScore, damage estimate, and Build Compare, the same way Arcana cards and gear already do.
-- New Wings equipment slot: pick from every real Wings item, pre-filtered to your character's own race, colored by rarity, with an Equip/Owned Effect filter to narrow the list. Both effect types feed the stat panel and GearScore the same way normal gear does. Level/enchant stays locked for now, since Wings enhancement isn't confirmed live on Global yet.
+## 🐛 Bug Fixes
+
+- **Language and Notification Sound dropdown popups could render detached, oddly positioned, or partly off-screen**, especially on multi-monitor setups.
+- Item Database: a handful of substat values in the item detail popup could get cut off instead of showing the full text.
 
 ---
 
@@ -50,6 +31,7 @@ These features are **not** part of an official update yet and are still under ac
 
 ## 🐛 Bug Fixes
 
+- **A profile could get silently reduced to almost nothing right when the app started**, if a daily/weekly reset happened to be due at that moment (i.e. simply not having opened the app since the last reset) — your tasks, shopping list, and templates could be wiped and immediately re-saved to disk before they'd even finished loading. Startup order fixed so a reset can no longer save over a profile before its real content has been read in.
 - **The app never actually shipped or refreshed its built-in Default profile content.** A fresh install (or an update) could end up with an outdated or missing starter profile since the bundled reference data was never included in the packaged build. It's now properly bundled and kept available for the "Restore Default profile" and "⟳ Sync" features above.
 
 ---

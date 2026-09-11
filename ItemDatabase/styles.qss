@@ -290,6 +290,21 @@ QPushButton:pressed {
     font-size: 13px;
 }
 
+/* Substat card value, right-aligned opposite its #DetailInfo label (User-
+   approved mockup, 2026-09-11) -- browse-only Item Database popup only. */
+#DetailInfoValue {
+    color: #e6ecf5;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* Header-band / body divider in the redesigned browse-only gear popup. */
+#DetailHeaderDivider {
+    background-color: rgba(100, 116, 139, 0.3);
+    max-height: 1px;
+    border: none;
+}
+
 #DetailEnchantValue {
     color: #facc15;
     font-weight: 700;
