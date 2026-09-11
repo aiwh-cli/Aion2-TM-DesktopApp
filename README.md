@@ -112,7 +112,13 @@ The app checks for updates automatically on startup. When a new version is avail
 
 ## 📸 Screenshots
 
-Screenshots and previews will be added soon.
+<img width="1186" height="839" alt="image" src="https://github.com/user-attachments/assets/59d05594-a1ad-41ed-949f-3246b8db7320" />
+<img width="1201" height="845" alt="image" src="https://github.com/user-attachments/assets/573d043c-aee6-4e42-a6d7-1e461d299779" />
+<img width="1697" height="977" alt="image" src="https://github.com/user-attachments/assets/71b4ad42-c24a-445a-a1c7-90b10963a258" />
+<img width="1285" height="992" alt="image" src="https://github.com/user-attachments/assets/273524a9-29bc-44c9-9c9f-18d69637f1d1" />
+<img width="1300" height="993" alt="image" src="https://github.com/user-attachments/assets/bc005bfb-f890-488b-8bc0-80e447505c05" />
+<img width="497" height="401" alt="image" src="https://github.com/user-attachments/assets/a3d4b46c-a3ed-4a55-ba24-520d9e0a3c8c" />
+
 
 ---
 
