@@ -2232,6 +2232,31 @@ class ItemDetailWidget(QWidget):
             if not equip_lines and not owned_stats:
                 lines.append("<i>No stat data available for this item.</i>")
 
+        # Set effects (User-reported, 2026-09-12, screenshot: "Guardian
+        # Centurion Staff" showed no set-bonus info at all, even though
+        # it's clearly part of a set per the Quick Select Item Set
+        # dropdown) -- the real per-item detail data already carries a
+        # full "set" object (name, member piece names, and a "bonuses"
+        # list of {degree, descriptions} per piece-count threshold) that
+        # was simply never displayed anywhere. Independent of which branch
+        # above ran (PvP/Abyss set gear still has normal mainStats, so it
+        # went through that branch same as any other weapon/armor), shown
+        # for ANY item that actually has one, browse-only or Build
+        # Planner equip panel alike -- purely informational, not gated by
+        # self._selectable like substat picking is.
+        set_info = self._detail.get("set")
+        if set_info and set_info.get("bonuses"):
+            set_name = set_info.get("name") or _t("arm_set_effect_fallback_name")
+            lines.append(f"<b>{_t('arm_set_effect_title', name=html.escape(set_name))}</b>")
+            for tier in sorted(set_info["bonuses"], key=lambda b: b.get("degree", 0)):
+                degree = tier.get("degree")
+                descriptions = tier.get("descriptions") or []
+                if not descriptions:
+                    continue
+                lines.append(
+                    f"<span style='color:#38bdf8;'>({degree})</span> {html.escape(', '.join(descriptions))}"
+                )
+
         self.main_stats_label.setText("<br>".join(lines))
 
         # Substats: real checkbox rows (not rich text) — lets the user mark
@@ -2700,6 +2725,14 @@ SLOT_LAYOUT = [
     ("Gloves", "arm_slot_gloves", ["Gloves"]),
     ("Pants", "arm_slot_pants", ["Legs"]),
     ("Boots", "arm_slot_boots", ["Shoes"]),
+    # Real bug found + fixed (User-reported, 2026-09-12, screenshot: no
+    # Cape/Cloak slot anywhere in the Build Planner at all) -- Cloak is a
+    # real armor category with real items in the catalog (185 real Cloak
+    # items confirmed, including the same "{Tier} Cloak" tier-chain naming
+    # every other armor piece uses) and was already treated as armor
+    # everywhere ELSE in this file (_ARMOR_CATEGORIES already includes
+    # "Cloak"), but never actually had an equip slot to put one in.
+    ("Cloak", "arm_slot_cloak", ["Cloak"]),
     ("Earring1", "arm_slot_earrings_plural", ["Earrings"]),
     ("Earring2", "arm_slot_earrings_plural", ["Earrings"]),
     ("Necklace", "arm_slot_necklace", ["Necklace"]),
@@ -2767,7 +2800,7 @@ _PANTHEON_BOARD_CATEGORIES = {"Pantheon", "Pantheon Decor"}
 # _QUICK_GEAR_SLOT_LABELS for why) -- translated in _build_slot_sections().
 _LEFT_EQUIP_SECTIONS = [
     ("arm_section_weapon", ["MainHand", "SubHand"]),
-    ("arm_section_armor", ["Helmet", "Shoulder", "Torso", "Gloves", "Pants", "Boots"]),
+    ("arm_section_armor", ["Helmet", "Shoulder", "Torso", "Gloves", "Pants", "Boots", "Cloak"]),
 ]
 if _WINGS_SLOT_ENABLED:
     # Own section (User-Wunsch, 2026-09-06: "über den Slot 'Wings' als
@@ -2826,6 +2859,7 @@ _EQUIP_PRIORITY_SECTIONS = [
     ("gloves", "arm_slot_gloves", ["Gloves"]),
     ("legs", "arm_slot_pants", ["Legs"]),
     ("shoes", "arm_slot_boots", ["Shoes"]),
+    ("cloak", "arm_slot_cloak", ["Cloak"]),
     ("earrings", "arm_slot_earrings_plural", ["Earrings"]),
     ("necklace", "arm_slot_necklace", ["Necklace"]),
     ("ring", "arm_slot_rings_plural", ["Ring"]),
@@ -9939,7 +9973,19 @@ class CraftingCalculatorWindow(QMainWindow):
             self._refresh_build_cost_tab()
 
     def _refresh_build_cost_tab(self):
-        self._build_cost_icon_registry = {}
+        # Real bug found + fixed (User-reported, 2026-09-12, screenshot:
+        # most rows had no icon at all) -- this used its own separate
+        # registry, but _on_crafting_icon_ready (the async icon_ready
+        # handler) only ever checks self._crafting_icon_registry. Icons
+        # already cached on disk resolved synchronously and showed up
+        # fine; anything needing a real fetch arrived later and had nowhere
+        # to be applied to. Reusing the SAME registry every other icon
+        # request in this window already goes through fixes it -- the
+        # existing RuntimeError guard in _on_crafting_icon_ready already
+        # safely no-ops a stale entry from a since-rebuilt table, so
+        # sharing one registry across tabs is exactly as safe as this
+        # window's own Simulator tab already relies on.
+        self._crafting_icon_registry = {}
         loadout = self._get_loadout_window() if self._get_loadout_window else None
         if loadout is None:
             self.build_cost_name_label.setText("")
@@ -9990,7 +10036,7 @@ class CraftingCalculatorWindow(QMainWindow):
             pix = _crafting_item_icon(
                 data.get("id"), self._items_by_id, self.icon_cache, 28,
                 apply=lambda p, it=name_item: it.setIcon(QIcon(p)),
-                registry=self._build_cost_icon_registry,
+                registry=self._crafting_icon_registry,
             )
             if pix:
                 name_item.setIcon(QIcon(pix))
@@ -10392,7 +10438,7 @@ _QUICK_GEAR_SLOT_WORDS = {
 # SLOT_LABELS above for why (module-level, evaluated once at import time).
 _QUICK_GEAR_CATEGORY_GROUPS = [
     ("weapon", "arm_group_weapon", ["MainHand", "SubHand"]),
-    ("armor", "arm_group_armor", ["Helmet", "Shoulder", "Torso", "Gloves", "Pants", "Boots"]),
+    ("armor", "arm_group_armor", ["Helmet", "Shoulder", "Torso", "Gloves", "Pants", "Boots", "Cloak"]),
     ("accessory", "arm_group_accessory", ["Earring1", "Earring2", "Necklace", "Ring1", "Ring2", "Bracelet1", "Bracelet2"]),
 ]
 
@@ -10517,6 +10563,7 @@ _QUICK_GEAR_SLOT_LABELS = {
     "Gloves": "arm_slot_gloves",
     "Pants": "arm_slot_pants",
     "Boots": "arm_slot_boots",
+    "Cloak": "arm_slot_cloak",
     "Earring1": "arm_slot_earring1",
     "Earring2": "arm_slot_earring2",
     "Necklace": "arm_slot_necklace",
@@ -10547,6 +10594,7 @@ _STAT_PRIORITY_CATEGORIES: list[tuple[str, str, list[str]]] = [
     ("gloves", "arm_slot_gloves", ["Gloves"]),
     ("pants", "arm_slot_pants", ["Pants"]),
     ("boots", "arm_slot_boots", ["Boots"]),
+    ("cloak", "arm_slot_cloak", ["Cloak"]),
     # Split from one combined "jewelry" tab (User-Wunsch, 2026-08-27, after
     # the user's own guide showed Rings need a fundamentally different
     # priority -- "Active Skill 1-6 > Attack" -- from Earring/Necklace's
@@ -10576,7 +10624,7 @@ _SLOT_TO_STAT_CATEGORY: dict[str, str] = {
 # QTabWidget inside the group page.
 _STAT_PRIORITY_GROUPS: list[tuple[str, str, list[str]]] = [
     ("weapon_guard", "arm_category_weapon", ["weapon"]),
-    ("armor", "arm_category_armor", ["helmet", "shoulder", "torso", "gloves", "pants", "boots"]),
+    ("armor", "arm_category_armor", ["helmet", "shoulder", "torso", "gloves", "pants", "boots", "cloak"]),
     ("jewelry", "arm_category_jewelry", ["ring", "jewelry", "bracelet"]),
 ]
 # slot_id -> the same "Waffe/Guard"/"Rüstung"/"Schmuck" 3-way grouping the
@@ -10605,7 +10653,7 @@ _SLOT_TO_EQUIPMENT_GROUP_LABEL_KEY = _build_slot_to_equipment_group_label_key()
 _STAT_PRIORITY_CATEGORY_SKILL_TYPES: dict[str, list[str]] = {
     "weapon": ["active"], "ring": ["active"], "jewelry": ["passive"],
     "helmet": ["passive"], "shoulder": ["passive"], "torso": ["passive"],
-    "gloves": ["passive"], "pants": ["passive"], "boots": ["passive"],
+    "gloves": ["passive"], "pants": ["passive"], "boots": ["passive"], "cloak": ["passive"],
 }
 
 # Overrides the dropdown's default frequency order (compute_stat_priority_
@@ -11521,10 +11569,19 @@ class StatPriorityEditorDialog(QWidget):
 
     def __init__(
         self, profiles: dict, skill_priority_names: dict[str, list[str]] | None = None,
-        on_done: "Callable[[dict | None], None] | None" = None, parent=None,
+        on_done: "Callable[[dict | None], None] | None" = None,
+        on_save: "Callable[[dict], None] | None" = None, parent=None,
     ):
         super().__init__(parent)
         self._on_done = on_done
+        # Real bug found + fixed (User-reported, 2026-09-12: "bei drücken
+        # von Save sollte nur gesichert werden und nicht der Prio Planner
+        # geschlossen werden") -- Save used to go through the SAME on_done
+        # callback as Cancel/back-arrow/X, which always also navigated the
+        # panel away. Split into its own callback so Save persists without
+        # closing; on_done (still called by _cancel(), wired to all three
+        # close affordances) is the only path that still navigates away.
+        self._on_save_callback = on_save
         self._data = copy.deepcopy(profiles)
         self._available_options = _load_stat_priority_options()
         # Skill names from the current class's Priority List, already in
@@ -11786,8 +11843,8 @@ class StatPriorityEditorDialog(QWidget):
 
     def _on_save(self):
         self._flush_combos_into_data()
-        if self._on_done:
-            self._on_done(self._data)
+        if self._on_save_callback:
+            self._on_save_callback(self._data)
 
 
 class _SearchableComboBox(QComboBox):
@@ -20432,10 +20489,19 @@ class LoadoutWindow(QMainWindow):
         widget = StatPriorityEditorDialog(
             self._stat_priority_profiles, self._skill_priority_names_by_type(),
             on_done=self._on_stat_priority_editor_done,
+            on_save=self._on_stat_priority_editor_saved,
         )
         self._stat_priority_editor_widget = widget
         self.equip_view_stack.addWidget(widget)
         self.equip_view_stack.setCurrentWidget(widget)
+
+    def _on_stat_priority_editor_saved(self, result_profiles: dict):
+        """Save button only -- persists without navigating away (User-
+        Wunsch, 2026-09-12: "bei drücken von Save sollte nur gesichert
+        werden und nicht der Prio Planner geschlossen werden"), so the
+        panel stays open for further edits across Gear-Modus/Rolle/
+        category combinations instead of needing to be reopened each time."""
+        self._stat_priority_profiles = result_profiles
 
     def _on_stat_priority_editor_done(self, result_profiles: dict | None):
         if result_profiles is not None:

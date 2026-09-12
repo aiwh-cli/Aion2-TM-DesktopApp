@@ -38,6 +38,7 @@ CATEGORY_NAMES = {
     "gloves": {"Gloves"},
     "pants": {"Legs"},
     "boots": {"Shoes"},
+    "cloak": {"Cloak"},
     "ring": {"Ring"},
     "jewelry": {"Earrings", "Necklace"},
     "bracelet": {"Bracelet"},

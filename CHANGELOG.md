@@ -1,3 +1,18 @@
+# Version 2.0.1
+
+## ✨ New Features
+
+- **Cloak/Cape is now a real equipment slot in the Build Planner.** Previously the only genuine armor category with no way to equip it at all — it now shows up on the paperdoll, contributes to GearScore and stat totals like every other armor piece, and has its own tab in Quick Select and the Property Priority editor.
+- **Item Set effects are now shown in the item detail popup.** Gear that's part of a set (mostly PvP/Abyss gear) now lists its real set bonuses (e.g. "2 pieces: ...", "5 pieces: ...") — this data already existed but was never actually displayed anywhere.
+
+## 🐛 Bug Fixes
+
+- **Build Planner: the Property Priority editor's "Save" button also closed the whole editor**, so adjusting priorities across multiple roles/gear modes meant reopening it every time. Save now only saves; Cancel/back/close still exit as before.
+- **Build Planner: Property Priority picks made by typing to search a stat name could silently fail to save**, reverting to the default the next time the editor was opened, and could leave a stray leftover dropdown fragment on screen after picking. Both fixed.
+- **Crafting Calculator: the new "Build Cost" tab was missing most item icons** — anything not already cached from earlier browsing never loaded.
+
+---
+
 # Version 2.0.0
 
 ## ✨ New Features
