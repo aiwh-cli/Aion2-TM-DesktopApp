@@ -1,3 +1,20 @@
+# Version 2.0.0
+
+## ✨ New Features
+
+- **New "Build Cost" tab in the Crafting Calculator.** Shows the total crafting cost for your currently active Build Planner build in one place — checks every equipped slot for a real recipe, adds up all the raw materials across every craftable piece into one combined shopping list, plus a total Kinah estimate.
+- **Crafting Simulator's "Priority List" dropdown reworked.** It now shows your actual Build Planner data in two clear groups — currently equipped craftable gear, and your Equipment Priority List's next targets — each item colored by its real rarity, so you can jump straight from either one into its crafting recipe. The old, easy-to-miss starred-recipes list (which wasn't connected to the Build Planner at all) has been replaced by this.
+
+## 🐛 Bug Fixes
+
+- **Build Planner: Property Priority editor could silently fail to save some ranks.** Picking a value by typing to search (instead of just clicking the dropdown list) could look correct on screen but not actually register, so it reverted to a default on reopening — and left a stray leftover popup fragment visible after picking. Both fixed.
+- **Build Planner: Quick Select's "Crafting" gear tier list was missing 8 of the real 12 tiers** for both factions, only showing the first and last couple of upgrade steps. Also fixed cramped, overlapping-looking rows in that same list.
+- **Daevanion Board showed "Abnormal Accuracy"/"Abnormal Resistance"** instead of "Status Effect Chance"/"Status Effect Resist" — the name used for the exact same stat everywhere else in the app.
+- **Flow Map: a brand-new profile's very first guide node always showed up in German**, regardless of the selected language.
+- Opening the Crafting Calculator no longer causes a multi-second flicker the first time you open its Priority List dropdown.
+
+---
+
 # Version 1.9.9
 
 ## ✨ New Features

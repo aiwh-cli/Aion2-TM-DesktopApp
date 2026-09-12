@@ -126,6 +126,7 @@ from PySide6.QtWidgets import (
     QToolTip,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 # Every QComboBox popup in the app rendered with NO hover feedback at all
@@ -9384,13 +9385,25 @@ class CraftingCalculatorWindow(QMainWindow):
     between a Start- and Ziel-item). Mirrors the design iterated on in the
     browser preview before being ported here."""
 
-    def __init__(self, raw_items: list[dict], icon_cache: "IconCache", detail_cache: "ItemDetailCache", parent=None):
+    def __init__(
+        self, raw_items: list[dict], icon_cache: "IconCache", detail_cache: "ItemDetailCache", parent=None,
+        get_loadout_window: "Callable[[], LoadoutWindow] | None" = None,
+    ):
         super().__init__(parent)
         self.setAttribute(Qt.WA_QuitOnClose, False)
         self.setWindowTitle(_t("arm_crafting_calculator_title"))
         self.resize(660, 820)
         self.icon_cache = icon_cache
         self.detail_cache = detail_cache
+        # Lazy accessor (User-Wunsch, 2026-09-12: "die gesamten Crafting
+        # Kosten des Buildplanners ausrechnen", "Equipment aus der
+        # [Ausrüstungs-]Prioliste [im Crafting Simulator] anzeigen") --
+        # calling this creates the Build Planner window if it doesn't exist
+        # yet (same singleton pattern as ItemDatabaseWindow.
+        # ensure_loadout_window()) WITHOUT ever showing it, just to read its
+        # already-restored equipped items/build name/priority lists. None
+        # only in the (headless-test-only) case nobody wired a getter in.
+        self._get_loadout_window = get_loadout_window
         self._items_by_id = {it["id"]: it for it in raw_items}
         # url -> [(apply_fn, size, grade), ...] -- see _crafting_item_icon's
         # docstring for why this replaces a naive full-rebuild-on-icon_ready.
@@ -9449,11 +9462,34 @@ class CraftingCalculatorWindow(QMainWindow):
 
         self.main_tabs.addTab(self._build_simulator_tab(), _t("arm_crafting_simulator_tab"))
         self.main_tabs.addTab(self._build_compare_tab(), _t("arm_compare_tab"))
+        self.main_tabs.addTab(self._build_build_cost_tab(), _t("arm_build_cost_tab"))
+        # Only recompute while this tab is actually visible -- it walks
+        # every equipped slot's full material tree, no need to pay that
+        # cost on every unrelated tab switch.
+        self.main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
         # Same ordering fix as CraftingItemPickerDialog -- must connect
         # before any icon is requested below, since IconCache.request()
         # resolves already-on-disk icons synchronously and emits immediately.
         self.icon_cache.icon_ready.connect(self._on_crafting_icon_ready)
+
+        # Real bug found + fixed (User-reported, 2026-09-12: clicking
+        # "Priority List" for the first time visibly flickered for 2-3
+        # seconds, and the menu was empty/stale until opened a SECOND
+        # time) -- self._get_loadout_window() (ensure_loadout_window())
+        # builds the ENTIRE Build Planner window from scratch the very
+        # first time anything calls it, a genuinely heavy one-time cost
+        # (its own full UI plus restoring persisted equipment/build
+        # state). That cost used to only ever get paid at the exact
+        # moment the user clicked the Priority List button, blocking the
+        # menu's own popup. Deferred to right after THIS window finishes
+        # opening instead (0ms timer -- runs on the next event-loop tick,
+        # after this window has already painted) so the expensive
+        # construction happens quietly in the background well before the
+        # user has a chance to click anything, not at the exact moment
+        # they're waiting on the menu to open.
+        if self._get_loadout_window is not None:
+            QTimer.singleShot(0, self._get_loadout_window)
 
     def _on_crafting_icon_ready(self, url: str):
         entries = self._crafting_icon_registry.get(url)
@@ -9622,17 +9658,120 @@ class CraftingCalculatorWindow(QMainWindow):
             return
         self._select_recipe(dlg.selected_recipe)
 
-    def _show_prio_menu(self):
-        menu = QMenu(self)
-        if not self._saved_targets:
-            action = menu.addAction(_t("arm_no_saved_targets"))
-            action.setEnabled(False)
+    def _add_prio_menu_section(self, menu: QMenu, header_key: str, entries: list[tuple[str, str, dict]], empty_key: str):
+        """One labeled group in the combined Priority List menu -- bold,
+        disabled header line, then either its real entries or a dimmed
+        "nothing here" line, matching the 2-group layout the user sketched
+        out directly (2026-09-12: "EQ-Planner: .. -------- EQ Prio: ..",
+        after the first version's 3 flat, visually-undifferentiated groups
+        -- including the never-used starred-recipes list -- read as one
+        undifferentiated wall of text: "das ist scheiße")."""
+        header_action = menu.addAction(_t(header_key))
+        header_action.setEnabled(False)
+        bold_font = header_action.font()
+        bold_font.setBold(True)
+        header_action.setFont(bold_font)
+        if not entries:
+            menu.addAction(_t(empty_key)).setEnabled(False)
         else:
-            for recipe in self._saved_targets:
-                name = recipe["outputs"][0].get("name") or "?"
-                action = menu.addAction(name)
-                action.triggered.connect(lambda checked=False, r=recipe: self._select_recipe(r))
+            # Real bug found + fixed (User-reported, 2026-09-12: "Hier
+            # bitte wieder mit Raritätsfarben arbeiten") -- a plain QAction
+            # can't be given its own text color (QAction.setText() is
+            # always plain text, no rich-text/color support), unlike the
+            # combo-box popups elsewhere in this app that already do this
+            # via Qt.ForegroundRole + a custom item delegate. QMenu has no
+            # per-item delegate system to hook the same way, so each entry
+            # is a QWidgetAction wrapping its own QLabel instead -- lets it
+            # carry the item's real grade color exactly like everywhere
+            # else gear is colored by rarity. QWidgetAction's embedded
+            # widget doesn't forward clicks into QAction.triggered on its
+            # own, so the label closes the menu and fires the selection
+            # itself on mousePressEvent (same click-through pattern already
+            # used for the Armory landing page's clickable cards).
+            for label, item_name, recipe in entries:
+                item_id = recipe["outputs"][0].get("id")
+                grade = self._item_grade(item_name, item_id)
+                color = GRADE_COLORS.get(grade, "#e5e7eb")
+                row = QLabel(f"{label}: {item_name}")
+                row.setStyleSheet(
+                    f"QLabel {{ color: {color}; padding: 4px 20px; background: transparent; }}"
+                    "QLabel:hover { background-color: rgba(34, 211, 238, 0.12); }"
+                )
+                row.setCursor(Qt.PointingHandCursor)
+
+                def on_row_press(event, r=recipe, m=menu):
+                    if event.button() == Qt.LeftButton:
+                        m.close()
+                        self._select_recipe(r)
+
+                row.mousePressEvent = on_row_press
+
+                widget_action = QWidgetAction(menu)
+                widget_action.setDefaultWidget(row)
+                menu.addAction(widget_action)
+
+    def _show_prio_menu(self):
+        # Real bug found + fixed (User-reported, 2026-09-12: "Bei der Prio
+        # Liste wird im Crafting Simulator nicht das Equipment aus der
+        # Prioliste angezeigt") -- this button only ever showed the
+        # Crafting Simulator's own session-only starred-recipe bookmarks
+        # (self._saved_targets), never the Build Planner's actual equipped
+        # gear or its Equipment Priority List -- the two things the user
+        # actually meant. The old starred-recipes group is dropped
+        # entirely now (never used, and the user's own 2-group sketch
+        # didn't include it) in favor of just these two, clearly
+        # separated.
+        menu = QMenu(self)
+        self._add_prio_menu_section(
+            menu, "arm_equipped_gear_menu_header",
+            self._current_equipped_craftable_items(), "arm_no_craftable_equipped",
+        )
+        menu.addSeparator()
+        self._add_prio_menu_section(
+            menu, "arm_eq_priority_menu_header",
+            self._current_equip_priority_targets(), "arm_no_craftable_priority_targets",
+        )
         menu.exec(self.prio_btn.mapToGlobal(self.prio_btn.rect().bottomLeft()))
+
+    def _current_equipped_craftable_items(self) -> list[tuple[str, str, dict]]:
+        """Every currently-equipped item (across all Build Planner slots)
+        that has a real recipe -- same "no recipe, no entry" rule as the
+        other two groups in this menu."""
+        if self._get_loadout_window is None:
+            return []
+        loadout = self._get_loadout_window()
+        slot_labels = {slot_id: label_key for slot_id, label_key, _cats in SLOT_LAYOUT}
+        entries = []
+        for slot_id, item in loadout._equipped.items():
+            name = item.get("name") if item else None
+            recipe = self._output_index.get(name) if name else None
+            if recipe:
+                label_key = slot_labels.get(slot_id, slot_id)
+                entries.append((_t(label_key), name, recipe))
+        return entries
+
+    def _current_equip_priority_targets(self) -> list[tuple[str, str, dict]]:
+        """The Build Planner's current (next-to-acquire) item per Equipment
+        Priority List section that ALSO has a real recipe -- items with no
+        recipe (drop/shop-only) have no crafting cost to show here, so
+        they're left out entirely rather than shown as a dead entry."""
+        if self._get_loadout_window is None:
+            return []
+        loadout = self._get_loadout_window()
+        entries = []
+        for key, label_key, _categories in _EQUIP_PRIORITY_SECTIONS:
+            chain = loadout._equip_priority_items.get(key, [])
+            progress = loadout._equip_priority_progress.get(key, 0)
+            if not (0 <= progress < len(chain)):
+                continue
+            item = chain[progress]
+            if not item:
+                continue
+            name = item.get("name")
+            recipe = self._output_index.get(name) if name else None
+            if recipe:
+                entries.append((_t(label_key), name, recipe))
+        return entries
 
     def _select_recipe(self, recipe: dict):
         self._current_recipe = recipe
@@ -9746,6 +9885,121 @@ class CraftingCalculatorWindow(QMainWindow):
         _flatten_material_tree(self._current_tree, self._current_qty, totals)
         lines = [f"{name} x{data['qty']:,}" for name, data in sorted(totals.items())]
         QApplication.clipboard().setText("\n".join(lines))
+
+    # ── "Build Cost" tab: total crafting cost across a whole Build Planner
+    # build (User-Wunsch, 2026-09-12: "die gesamten Crafting Kosten des
+    # Buildplanners ausrechnen und darstellen -> jeder Slot soll geprüft
+    # werden ob crafting gear, dann sollen die Kosten zusammengerechnet
+    # werden, ähnlich wie beim Crafting Sim") -- every equipped slot with a
+    # real recipe gets its full material tree flattened into the SAME
+    # `totals` dict (_flatten_material_tree already sums duplicates across
+    # however many trees feed it), so identical raw materials needed by
+    # several different pieces of gear end up as one combined line instead
+    # of one per item. Slots with no matching recipe (drop/shop-only gear)
+    # are simply skipped, same as the Priority List menu above. ──
+
+    def _build_build_cost_tab(self) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(10)
+
+        self.build_cost_name_label = QLabel()
+        self.build_cost_name_label.setObjectName("DetailHeader")
+        outer.addWidget(self.build_cost_name_label)
+
+        self.build_cost_summary_label = QLabel()
+        self.build_cost_summary_label.setObjectName("DetailInfo")
+        self.build_cost_summary_label.setWordWrap(True)
+        outer.addWidget(self.build_cost_summary_label)
+
+        self.build_cost_empty_label = QLabel(_t("arm_build_cost_empty"))
+        self.build_cost_empty_label.setObjectName("DetailInfo")
+        self.build_cost_empty_label.setWordWrap(True)
+        outer.addWidget(self.build_cost_empty_label)
+
+        self.build_cost_kinah_label = QLabel()
+        self.build_cost_kinah_label.setObjectName("DetailInfo")
+        outer.addWidget(self.build_cost_kinah_label)
+
+        self.build_cost_table = QTableWidget(0, 2)
+        self.build_cost_table.setHorizontalHeaderLabels([_t("arm_col_material"), _t("arm_col_needed")])
+        self.build_cost_table.verticalHeader().setVisible(False)
+        self.build_cost_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.build_cost_table.horizontalHeader().setStretchLastSection(True)
+        self.build_cost_table.setColumnWidth(0, 300)
+        self.build_cost_table.setIconSize(QSize(28, 28))
+        self.build_cost_table.setSortingEnabled(True)
+        outer.addWidget(self.build_cost_table, 1)
+        self._build_cost_page = page
+        return page
+
+    def _on_main_tab_changed(self, index: int):
+        if self.main_tabs.widget(index) is self._build_cost_page:
+            self._refresh_build_cost_tab()
+
+    def _refresh_build_cost_tab(self):
+        self._build_cost_icon_registry = {}
+        loadout = self._get_loadout_window() if self._get_loadout_window else None
+        if loadout is None:
+            self.build_cost_name_label.setText("")
+            self.build_cost_summary_label.setText("")
+            self.build_cost_empty_label.setVisible(True)
+            self.build_cost_kinah_label.setVisible(False)
+            self.build_cost_table.setVisible(False)
+            self.build_cost_table.setRowCount(0)
+            return
+
+        self.build_cost_name_label.setText(loadout._current_build_name)
+
+        totals: dict[str, dict] = {}
+        total_kinah = 0
+        craftable_count = 0
+        equipped_count = len(loadout._equipped)
+        for item in loadout._equipped.values():
+            name = item.get("name") if item else None
+            recipe = self._output_index.get(name) if name else None
+            if not recipe:
+                continue
+            craftable_count += 1
+            tree = _build_material_tree(recipe, self._output_index, self._items_by_id)
+            _flatten_material_tree(tree, 1, totals)
+            total_kinah += _compute_tree_kinah(tree, 1)
+
+        self.build_cost_summary_label.setText(
+            _t("arm_build_cost_summary", craftable=craftable_count, equipped=equipped_count)
+        )
+
+        if not totals:
+            self.build_cost_empty_label.setVisible(True)
+            self.build_cost_kinah_label.setVisible(False)
+            self.build_cost_table.setVisible(False)
+            self.build_cost_table.setRowCount(0)
+            return
+
+        self.build_cost_empty_label.setVisible(False)
+        self.build_cost_kinah_label.setVisible(True)
+        self.build_cost_kinah_label.setText(_t("arm_kinah_total", amount=f"{total_kinah:,}"))
+        self.build_cost_table.setVisible(True)
+
+        self.build_cost_table.setSortingEnabled(False)
+        rows = sorted(totals.items(), key=lambda kv: kv[0])
+        self.build_cost_table.setRowCount(len(rows))
+        for row, (name, data) in enumerate(rows):
+            name_item = QTableWidgetItem(name)
+            pix = _crafting_item_icon(
+                data.get("id"), self._items_by_id, self.icon_cache, 28,
+                apply=lambda p, it=name_item: it.setIcon(QIcon(p)),
+                registry=self._build_cost_icon_registry,
+            )
+            if pix:
+                name_item.setIcon(QIcon(pix))
+            grade = self._item_grade(name, data.get("id"))
+            if grade in GRADE_COLORS:
+                name_item.setForeground(QColor(GRADE_COLORS[grade]))
+            self.build_cost_table.setItem(row, 0, name_item)
+            self.build_cost_table.setItem(row, 1, _SortableTableWidgetItem(f"{data['qty']:,}", data["qty"]))
+        self.build_cost_table.setSortingEnabled(True)
 
     # ── "Vergleich" tab: Direct-Craft vs. Transfer-chain comparison ──
 
@@ -10046,6 +10300,11 @@ class CraftingCalculatorWindow(QMainWindow):
         self.setWindowTitle(_t("arm_crafting_calculator_title"))
         self.main_tabs.setTabText(0, _t("arm_crafting_simulator_tab"))
         self.main_tabs.setTabText(1, _t("arm_compare_tab"))
+        self.main_tabs.setTabText(2, _t("arm_build_cost_tab"))
+        self.build_cost_table.setHorizontalHeaderLabels([_t("arm_col_material"), _t("arm_col_needed")])
+        self.build_cost_empty_label.setText(_t("arm_build_cost_empty"))
+        if self.main_tabs.currentWidget() is self._build_cost_page:
+            self._refresh_build_cost_tab()
         self.open_picker_btn.setText(_t("arm_choose_item_from_db"))
         self.prio_btn.setText(_t("arm_priority_list_btn"))
         # compare_start_btn/compare_target_btn intentionally NOT reset here --
@@ -10851,11 +11110,22 @@ class QuickGearSelectDialog(QDialog):
         # that entirely and reliably lets each item's own Qt.ForegroundRole
         # grade color show through (User-Wunsch: "die Raritäten für die
         # Schriftfarbe verwenden").
+        #
+        # Real bug found + fixed (User-reported, 2026-09-12, screenshot: the
+        # now-12-tier list looked cramped/overlapping) -- setting a
+        # stylesheet directly on this view replaces the WHOLE cascade for
+        # it, so the app-wide "QComboBox QAbstractItemView::item { padding:
+        # 4px 8px; }" rule every other combo's popup gets never reaches
+        # this one -- items fell back to Qt's bare, much tighter default.
+        # Restated here (a bit more generous, since 12 rows now share this
+        # popup instead of the old 4) so it's self-contained instead of
+        # relying on inheritance that doesn't actually reach it.
         self.tier_combo.view().setStyleSheet(
             "background-color: #0f172a;"
             "border: 1px solid rgba(100, 116, 139, 0.45);"
             "selection-background-color: rgba(34, 211, 238, 0.25);"
             "padding: 4px;"
+            "QAbstractItemView::item { padding: 6px 10px; }"
         )
         self.tier_combo.setItemDelegate(_RoleColorDelegate(self.tier_combo))
         self.tier_combo.currentIndexChanged.connect(self._on_tier_selected)
@@ -10965,15 +11235,26 @@ class QuickGearSelectDialog(QDialog):
         if self._active_dungeon_tag == "Crafting":
             root_prefix = RACE_TIER_ROOT.get(race)
             if root_prefix:
-                # "Ring" as the reference slot to derive the shared
-                # tier-prefix ladder from -- verified against the real
-                # dataset that Ring/Boots/Necklace/Dagger/Greatsword all
-                # reach the identical prefix set for a given race (Helm's
-                # own recipe chain doesn't resolve as cleanly, but the
-                # actual Helm items still exist under the same tier names,
-                # so borrowing Ring's chain and looking Helm up by name
-                # directly still works -- see project_todo.md).
-                chain = _ordered_tier_chain(f"{root_prefix} Ring", "Ring", self._transfer_source_index)
+                # Real bug found + fixed (User-reported, 2026-09-12,
+                # screenshot: Elyos/Crafting/All only listed 4 tiers
+                # instead of the real 10) -- "Ring" was used as the
+                # reference slot to derive the shared tier-prefix ladder,
+                # but Ring's OWN upgrade chain (unlike every other slot
+                # type) stops early after just 2 hops (confirmed via a
+                # direct BFS trace against the real recipe data: Ring
+                # reaches only "True Dragon Lord"/"Splendent True Dragon
+                # Lord", while Greatsword/Boots/Necklace/Dagger all
+                # correctly walk the full 10-tier chain through White/Wise/
+                # Celestial/Obsidian Dragon Lord). "Boots" is a universal
+                # armor slot every class can equip (unlike Greatsword,
+                # which only some classes can) and was verified to reach
+                # the full chain for BOTH races, so it replaces Ring as the
+                # reference item here (Helm's own recipe chain doesn't
+                # resolve as cleanly either, but the actual Helm items
+                # still exist under the same tier names, so borrowing
+                # another slot's chain and looking Helm up by name directly
+                # still works -- see project_todo.md).
+                chain = _ordered_tier_chain(f"{root_prefix} Boots", "Boots", self._transfer_source_index)
                 for tier in chain:
                     grade = self._tier_grade(tier)
                     if self._selected_grade == "All" or grade == self._selected_grade:
@@ -11466,6 +11747,17 @@ class StatPriorityEditorDialog(QWidget):
             current = selections[i]
             idx = combo.findData(current) if current else 0
             combo.setCurrentIndex(idx if idx >= 0 else 0)
+            # Real bug found + fixed (User-reported, 2026-09-12, GitHub
+            # issue #3: a leftover "second bar" stayed visible right under
+            # the combo after picking a value) -- setCurrentIndex() above
+            # changes the line edit's displayed text, which the completer
+            # (watching that same line edit) can react to by popping open
+            # its own single-match suggestion box -- a SEPARATE popup from
+            # the combo's own dropdown, so nothing else here was closing
+            # it. Explicitly hiding it after every programmatic update.
+            completer = combo.completer()
+            if completer and completer.popup():
+                completer.popup().hide()
             combo.blockSignals(False)
 
     def _on_profile_changed(self, gear_type: str | None = None, role: str | None = None):
@@ -11539,6 +11831,35 @@ def _build_stat_priority_combo() -> QComboBox:
     completer.setCompletionMode(QCompleter.PopupCompletion)
     completer.setFilterMode(Qt.MatchContains)
     completer.setCaseSensitivity(Qt.CaseInsensitive)
+
+    # Real bug found + fixed (User-reported, 2026-09-12, GitHub issue #4:
+    # "Priorities not saved" -- filled in all 7 ranks, saved, reopened, and
+    # only rank 1 survived). Root cause: picking a value by TYPING to
+    # filter and choosing a completer suggestion updates the line edit's
+    # TEXT, but Qt's own editable-combobox+QCompleter wiring doesn't
+    # reliably also update the combo's own currentIndex/currentData or
+    # fire activated() for that pick -- so a rank picked this way could
+    # LOOK filled while editing but still report an empty currentData() to
+    # _current_selections() at save time (confirmed: the "ring" category's
+    # built-in fallback is exactly ["Attack"], matching the user's
+    # screenshot precisely -- rank 1 alone, since only a plain dropdown
+    # click reliably updates currentIndex there). Explicitly resolving and
+    # committing the pick here on the completer's own "activated" signal
+    # (fires for both a mouse click on a suggestion and pressing Enter
+    # while one is highlighted) makes the combo's real selection always
+    # match what's visibly typed, and re-fires activated() so the existing
+    # "exclude this name from every other rank" rebuild still runs exactly
+    # as it would for a plain click.
+    def _commit_completion(text: str):
+        idx = combo.findText(text, Qt.MatchFixedString)
+        if idx >= 0:
+            if idx != combo.currentIndex():
+                combo.setCurrentIndex(idx)
+            combo.activated.emit(idx)
+        if completer.popup():
+            completer.popup().hide()
+
+    completer.activated[str].connect(_commit_completion)
     return combo
 
 
@@ -11785,7 +12106,13 @@ _DAEVANION_STAT_LABELS: dict[str, str] = {
     "decreasedamage": "Decrease Damage",
     "additionalhitrate": "Additional Hit Rate", "additionalhitresistrate": "Additional Hit Resist",
     "multihitchance": "Multi-hit Chance", "multihitresist": "Multi-hit Resist",
-    "abnormalaccuracy": "Abnormal Accuracy", "abnormalresistance": "Abnormal Resistance",
+    # Real bug found + fixed (User-reported, 2026-09-12, screenshot: "Abnormal
+    # Accuracy hat sicher einen anderen Namen") -- these two were missed in
+    # the 2026-08-30 canonical-name pass noted below; every OTHER place in
+    # the app (item main stats, skill descriptions, _PVE_MODE_STAT_ROWS)
+    # already calls this exact same stat pair "Status Effect Chance"/
+    # "Status Effect Resist".
+    "abnormalaccuracy": "Status Effect Chance", "abnormalresistance": "Status Effect Resist",
     "damageboost": "Damage Boost", "damagetolerance": "Damage Tolerance",
     "criticaldamageboost": "Critical Damage Boost", "criticaldamagetolerance": "Critical Damage Tolerance",
     # Renamed 2026-08-30 to match the canonical Boss-stat names already
@@ -21138,7 +21465,10 @@ class ItemDatabaseWindow(QMainWindow):
         already opens both directly -- this method is still the real
         entry point both paths share."""
         if self._crafting_window is None:
-            self._crafting_window = CraftingCalculatorWindow(self._raw_items, self.icon_cache, self.detail_cache, None)
+            self._crafting_window = CraftingCalculatorWindow(
+                self._raw_items, self.icon_cache, self.detail_cache, None,
+                get_loadout_window=self.ensure_loadout_window,
+            )
             self._crafting_window.setStyleSheet(_load_qss_text())
         self._crafting_window.show()
         self._crafting_window.raise_()

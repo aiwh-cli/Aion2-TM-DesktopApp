@@ -537,9 +537,14 @@ class FlowMapWindow(QMainWindow):
         self.toggle_editor_panel()
 
     def add_demo_flow(self):
+        # Real bug found + fixed (User-reported, 2026-09-11, screenshot:
+        # a fresh install's first-ever Flow Map showed this seed node in
+        # German regardless of the selected language) -- title/description
+        # were hardcoded German literals instead of going through
+        # self.tr_func like every other piece of chrome in this window.
         node1 = FlowNode(
-            title="Char erstellen",
-            description="Erstelle einen neuen\nCharakter.",
+            title=self.tr_func(self.language, "flow_demo_node_title"),
+            description=self.tr_func(self.language, "flow_demo_node_desc"),
             icon="character",
             status="active",
         )
