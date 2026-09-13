@@ -1,3 +1,22 @@
+# Version 2.0.2
+
+## ✨ New Features
+
+- **Quick Select can now auto-equip a matching Amulet and both Rune slots** along with the rest of a set — Fierce Battle Amulet (PvP) / Revelation Amulet (PvE), always the Unique-rarity version, enchanted to +10; Clash Rune (PvE) and Devotion Rune (PvP) into both Rune slots, each enchanted to +5.
+
+## 🎨 UI Changes
+
+- **Quick Select: Bracelets now has its own checkbox** instead of being bundled into "Jewelry" — useful since Bracelets aren't always resolvable for every Item Set, so they can now be left out on their own without affecting Earrings/Necklace/Rings.
+- Build Planner: saving in the Property Priority editor now shows a brief "Saved" confirmation instead of no feedback at all.
+- **Skill Planner: the Arcana Calculator's "Choose Card Sets" dialog redesigned** — a real left-aligned 3-column layout with consistent spacing, each theme colored individually (Vigor gold, Magic turquoise, etc.), and a small (i) next to each theme's name showing its full Set bonus on hover. A preview of upcoming Season Sets is also included, staying locked until a future season actually goes live.
+
+## 🐛 Bug Fixes
+
+- **Build Planner: Quick Select couldn't auto-equip the Cloak slot** ("Not found for: Cloak").
+- **Build Planner: clicking the middle of an enchant-level slider jumped straight to 0 or max** instead of the position you actually clicked.
+
+---
+
 # Version 2.0.1
 
 ## ✨ New Features

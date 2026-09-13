@@ -111,6 +111,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QStackedWidget,
@@ -1391,6 +1392,35 @@ class _TickedSlider(QSlider):
                 self.minimum(), self.maximum(), tick, available
             ) + handle_rect.width() // 2 + groove_rect.left()
             painter.drawLine(x, tick_y, x, tick_y + 4)
+
+    def mousePressEvent(self, event):
+        # Real bug found + fixed (User-reported, 2026-09-13: clicking the
+        # middle of the enchant slider's track just toggled between 0 and
+        # max instead of jumping to the clicked position) -- that's Qt's
+        # own DEFAULT QSlider behavior for a click that lands on the
+        # groove rather than directly on the handle: it moves by one PAGE
+        # STEP toward the click, which for a slider whose page step
+        # roughly equals its own range just slams straight to min/max
+        # instead of landing where the mouse actually is. Overriding to
+        # compute the value directly from the click position (same
+        # QStyle.sliderPositionFromValue() math _TickedSlider's own tick
+        # marks above already use, just inverted) makes clicking anywhere
+        # on the track jump the handle exactly there, the behavior the
+        # user expected all along. A click that lands ON the handle itself
+        # still starts a normal drag via the default implementation.
+        if event.button() == Qt.LeftButton and self.orientation() == Qt.Horizontal:
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+            handle_rect = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
+            if not handle_rect.contains(event.pos()):
+                groove_rect = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self)
+                available = groove_rect.width() - handle_rect.width()
+                pos = event.pos().x() - groove_rect.left() - handle_rect.width() // 2
+                value = QStyle.sliderValueFromPosition(self.minimum(), self.maximum(), pos, available)
+                self.setValue(value)
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
 
 class _DownwardComboBox(QComboBox):
@@ -2892,6 +2922,38 @@ ARCANA_CARD_TYPES = [
     "Key", "Hourglass", "Dice", "Lantern",
 ]
 ARCANA_THEME_ORDER = ["Vigor", "Magic", "Frenzy", "Purity", "Punishment", "Protection", "Indomitability"]
+
+# Per-theme identity color for the Choose Card Sets dialog (User-Wunsch,
+# 2026-09-13, confirmed via browser mockup) -- each theme keeps its own
+# color as its selection highlight instead of one generic gold for
+# whichever pill happens to be picked, so Vigor/Magic (and, once enabled,
+# Frenzy/Purity and Punishment/Protection/Indomitability) read as
+# visually distinct Sets at a glance.
+_ARCANA_THEME_COLORS = {
+    "Vigor": "#facc15", "Magic": "#22d3ee", "Frenzy": "#f97316", "Purity": "#a78bfa",
+    "Punishment": "#ef4444", "Protection": "#4ade80", "Indomitability": "#f472b6",
+}
+
+# The real 2/2/3-theme Season Set groupings (User-Wunsch, 2026-09-13: prep
+# work for the Arcana seasons that release after this one -- "[Vigor/Magic]
+# [Frenzy/Pureblood][PunOv/ProSoul/Indom]"). Exactly one group is active in
+# ArcanaThemeChoiceDialog at a time, driving both the grid's columns AND
+# which Lord card types are even usable that season (Scales, e.g., has no
+# Vigor/Magic entry at all -- see _arcana_usable_lord_types -- so it only
+# ever appears as a 6th row once a non-Vigor/Magic group is active).
+_ARCANA_SEASON_GROUPS: list[tuple[str, str, list[str]]] = [
+    ("vigor_magic", "Vigor / Magic", ["Magic", "Vigor"]),
+    ("frenzy_purity", "Frenzy / Purity", ["Frenzy", "Purity"]),
+    ("pun_pro_indom", "Punishment / Protection / Indomitability", ["Punishment", "Protection", "Indomitability"]),
+]
+
+# Gates which of the 3 groups above are actually SELECTABLE (User-Wunsch,
+# 2026-09-13: "derzeit zwar sichtbar, aber vor dem Updatepush das
+# deaktivieren ... aktuell nur Vigor/Magic anklicken [lassen]"). The group
+# containing Vigor/Magic always stays selectable regardless of this flag;
+# the other two stay visible with a 🔒 lock but can't be clicked while
+# this is False. Flip to True only once a later season is confirmed live.
+_ARCANA_FUTURE_SEASONS_ENABLED = False
 
 # ---- Arcana Planner (2026-08-29) -------------------------------------------
 # One equip slot per Lord card TYPE (not a generic duplicates-allowed pool --
@@ -10421,6 +10483,7 @@ _QUICK_GEAR_SLOT_WORDS = {
     "Gloves": "Gloves",
     "Pants": "Greaves",
     "Boots": "Boots",
+    "Cloak": "Cloak",
     "Earring1": "Earrings",
     "Earring2": "Earrings",
     "Necklace": "Necklace",
@@ -10430,16 +10493,27 @@ _QUICK_GEAR_SLOT_WORDS = {
     "Bracelet2": "Bracelet",
 }
 
-# Category prefilter groups for the Schnellauswahl popup -- same 3-group
-# split ("Waffe/Guard", "Rüstungsteile", "Schmuck") requested for the
+# Category prefilter groups for the Schnellauswahl popup -- 4-group split
+# ("Waffe/Guard", "Rüstungsteile", "Schmuck", "Bracelets") requested for the
 # feature, each a checkbox controlling whether that group's slots are
-# included in this run's auto-equip.
+# included in this run's auto-equip. Bracelets split out of "Schmuck" into
+# its own group (User-Wunsch, 2026-09-13: "Da die Bracelets nicht durch die
+# schnellauswahl befüllt werden, würd ich die rausnehmen ... lass uns dafür
+# einen zusätzlichen [Button] machen") -- no crafted/dungeon tier chain
+# actually resolves a Bracelet item (see _resolve_slot_item), so leaving it
+# under Jewelry meant unchecking that whole group's checkbox to skip a
+# slot that silently never filled anyway; its own group lets it be
+# unchecked without affecting Earring/Necklace/Ring. Reuses
+# "arm_category_bracelet" (already "Bracelets"/"Bracelets"/"Браслеты") --
+# same word the Stat Priority Editor's own Bracelet tab uses, no new
+# translation key needed.
 # 2nd element is a translation KEY, not display text -- see _QUICK_GEAR_
 # SLOT_LABELS above for why (module-level, evaluated once at import time).
 _QUICK_GEAR_CATEGORY_GROUPS = [
     ("weapon", "arm_group_weapon", ["MainHand", "SubHand"]),
     ("armor", "arm_group_armor", ["Helmet", "Shoulder", "Torso", "Gloves", "Pants", "Boots", "Cloak"]),
-    ("accessory", "arm_group_accessory", ["Earring1", "Earring2", "Necklace", "Ring1", "Ring2", "Bracelet1", "Bracelet2"]),
+    ("accessory", "arm_group_accessory", ["Earring1", "Earring2", "Necklace", "Ring1", "Ring2"]),
+    ("bracelet", "arm_category_bracelet", ["Bracelet1", "Bracelet2"]),
 ]
 
 # Explicit per-slot name overrides for the 2 "Crafting" prefix-grouped
@@ -11003,6 +11077,10 @@ class QuickGearSelectDialog(QDialog):
         self._name_to_item = {it["name"]: it for it in items_by_id.values() if it.get("name")}
         self._character_class = character_class
         self._detail_cache = detail_cache
+        # Raw PvP/PvE/Neutral toggle state from the Build Planner's own
+        # header row -- kept as-is (not just the derived tag set below) so
+        # the Amulet/Rune auto-equip below can ask "is PvP active?" directly.
+        self._active_gear_types: set[str] = active_gear_types or set()
         # Which Quick-Select tags the global PvP/PvE/Neutral filter allows
         # (see _GEAR_TYPE_TO_QUICK_SELECT_TAGS) -- empty/None means no
         # restriction (show everything), matching the global filter's own
@@ -11276,7 +11354,21 @@ class QuickGearSelectDialog(QDialog):
         crafted chain genuinely IS "Crafting" in the game's own sense, not
         a separate category). Every item's itemData is (prefix, grade) --
         _on_apply/_ on_tier_selected read only that, never the (possibly
-        "Name (Gearscore)"-formatted) display text."""
+        "Name (Gearscore)"-formatted) display text.
+
+        NOTE: a checkbox-driven variant of this (narrowing the Gear Type
+        Filter + this list to whatever's actually resolvable for the
+        currently-checked "Included Slots") was tried and reverted (User-
+        reported, 2026-09-13: filtering to only "Bracelets" checked showed
+        just "Faded Shadow", but real Bracelets like Corroded/Abyssal/
+        Ascension/etc. exist too -- they're standalone reward/quest items
+        with no matching Helm/Boots/etc. set at all, so they never show up
+        in _dungeon_sets_by_source's root list in the first place and can't
+        be resolved this way without a real data-pipeline change). User's
+        own call: "nehmen wir die Checkbox filterung wieder raus und lassen
+        es wie gehabt - Die Meldung beim Schnellauswahl zeigt ja an, dass
+        die EQ Teile nicht existieren" -- the existing "not found" status
+        message after Equip already covers this case correctly."""
         self.tier_combo.blockSignals(True)
         self.tier_combo.clear()
 
@@ -11460,6 +11552,55 @@ class QuickGearSelectDialog(QDialog):
         if not self.result_slots:
             self.status_label.setText(_t("arm_no_matching_items"))
             return
+
+        # Real feature added (User-Wunsch, 2026-09-12/13: "kannst du das
+        # passende Amulet automatisch mit ausrüsten - Fierce Battle -> PvP
+        # und Revelation -> PvE" + "Genauso bei den Runen") -- Amulet and
+        # Rune are BOTH outside the tier-chain Item Set system entirely
+        # (Amulet has no random subStats at all -- see
+        # _STAT_PRIORITY_CATEGORIES' own comment; Rune isn't part of any
+        # crafted/dungeon tier chain either), so neither was ever reachable
+        # through Quick Select before, regardless of which slot-group
+        # checkboxes are ticked. Always additionally equipped once
+        # anything else resolved -- unconditional, not gated by a
+        # checkbox, since neither slot belongs to any of the 3 existing
+        # groups. PvP-vs-PvE picked from the same global toggle the rest
+        # of the Build Planner already uses (self._active_gear_types).
+        #
+        # User's own words on scope, kept deliberately simple: "beim
+        # fierce Amulet nimmst du nur das goldene [Unique-Grade] - falls
+        # der User explizit ein anderes wünscht, muss er es tauschen" (no
+        # rarity-matching logic) + fixed enchant levels for both ("Amulet
+        # auf 10 gepusht", "Runen fest auf +5").
+        is_pvp = "PvP" in (self._active_gear_types or set())
+        amulet_name = "Fierce Battle Amulet" if is_pvp else "Revelation Amulet"
+        amulet_item = next(
+            (it for it in self._items_by_id.values()
+             if it.get("name") == amulet_name and it.get("grade") == "Unique"),
+            None,
+        )
+        if amulet_item:
+            self.result_slots["Amulet"] = amulet_item
+            self.result_enchant["Amulet"] = 10
+
+        # Both real Rune items exist and give distinct, complementary
+        # bonuses (Clash = PvE Damage Boost/Tolerance, Devotion = PvP
+        # Damage Boost/Tolerance -- see _RUNE_EXTRA_ITEMS) and there are
+        # only ever these 2, so both slots get filled, not just one --
+        # User-reported, 2026-09-13 (screenshot: Rune2 left empty):
+        # "das quickslot hat nur für einen runenslot funktioniert". The
+        # mode-matching rune still takes Rune1 so its icon lines up with
+        # the active PvP/PvE toggle, the other rune fills Rune2.
+        primary_rune_id = _RUNE_PVP_ITEM_ID if is_pvp else _RUNE_PVE_ITEM_ID
+        secondary_rune_id = _RUNE_PVE_ITEM_ID if is_pvp else _RUNE_PVP_ITEM_ID
+        primary_rune_item = self._items_by_id.get(primary_rune_id)
+        secondary_rune_item = self._items_by_id.get(secondary_rune_id)
+        if primary_rune_item:
+            self.result_slots["Rune1"] = primary_rune_item
+            self.result_enchant["Rune1"] = 5
+        if secondary_rune_item:
+            self.result_slots["Rune2"] = secondary_rune_item
+            self.result_enchant["Rune2"] = 5
 
         # Report any misses after closing (via the caller) rather than here
         # -- accept() below closes the dialog immediately, so a message set
@@ -11705,6 +11846,20 @@ class StatPriorityEditorDialog(QWidget):
         reset_btn.clicked.connect(self._on_reset_current_profile)
         button_row.addWidget(reset_btn)
         button_row.addStretch(1)
+        # Real bug found + fixed (User-reported, 2026-09-12/13: "bei Save
+        # von Priorities eine Nachricht, dass gesichert wurde") -- once
+        # Save stopped closing the panel (see _on_save's own history), a
+        # click on it gave NO feedback at all that anything happened; the
+        # panel closing used to be the only confirmation. Reuses the same
+        # "✓ Saved" wording/style Flow Map already established for this
+        # exact concept instead of inventing new copy, self-hides after a
+        # couple seconds since this is a discrete click, not Flow Map's
+        # continuous autosave indicator.
+        self.save_status_label = QLabel(_t("flow_saved"))
+        self.save_status_label.setObjectName("FlowSaveStatusLabel")
+        self.save_status_label.setProperty("state", "saved")
+        self.save_status_label.setVisible(False)
+        button_row.addWidget(self.save_status_label)
         cancel_btn = QPushButton(_t("arm_cancel"))
         cancel_btn.clicked.connect(self._cancel)
         button_row.addWidget(cancel_btn)
@@ -11845,6 +12000,8 @@ class StatPriorityEditorDialog(QWidget):
         self._flush_combos_into_data()
         if self._on_save_callback:
             self._on_save_callback(self._data)
+        self.save_status_label.setVisible(True)
+        QTimer.singleShot(2000, lambda: self.save_status_label.setVisible(False))
 
 
 class _SearchableComboBox(QComboBox):
@@ -12956,9 +13113,60 @@ class ArcanaSetBonusTooltip(_TranslucentCardTooltip):
     def set_bonus(self, theme: str):
         info = ARCANA_SET_BONUSES.get(theme, {})
         self._title_label.setText(_t("arm_set_bonus", name=info.get("setName", theme)))
+        # Title now matches this theme's own identity color (User-Wunsch,
+        # 2026-09-13, confirmed via mockup) instead of one fixed cyan for
+        # every Set -- same _ARCANA_THEME_COLORS the Choose Card Sets
+        # dialog's pills/column headers use.
+        color = _ARCANA_THEME_COLORS.get(theme, "#22d3ee")
+        self._title_label.setStyleSheet(
+            f"font-size: 13px; font-weight: 700; color: {color}; background: transparent; border: none;"
+        )
         self._2pc_label.setText(_t("arm_set_bonus_2pc", text=info.get("2pc", "")))
         self._4pc_label.setText(_t("arm_set_bonus_4pc", text=info.get("4pc", "")))
         self.adjustSize()
+
+
+class _ArcanaSetInfoDot(QLabel):
+    """Small "(i)" hover target next to a Choose Card Sets column header
+    (User-Wunsch, 2026-09-13: "ein kleines (i) - wenn man hier mit der
+    Maus drüber hovert, sieht man den Seteffekt ... das gleiche Tooltip
+    nutzen, das du bereits bei den Arcana Sets in der Info nutzt") --
+    reuses ArcanaSetBonusTooltip as-is via a shared instance, same
+    hover_token/shown_for_key guard ArcanaSetBanner already uses to avoid
+    the Windows spurious-enter/leave flicker."""
+
+    def __init__(self, theme: str, tooltip: "ArcanaSetBonusTooltip", parent=None):
+        super().__init__("i", parent)
+        self._theme = theme
+        self._tooltip = tooltip
+        color = _ARCANA_THEME_COLORS.get(theme, "#94a3b8")
+        self.setFixedSize(14, 14)
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet(
+            f"border: 1.5px solid {color}; border-radius: 7px; color: {color}; "
+            "font-size: 9px; font-weight: 800; background: transparent;"
+        )
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self._tooltip._hover_token = getattr(self._tooltip, "_hover_token", 0) + 1
+        if getattr(self._tooltip, "_shown_for_key", None) == self._theme:
+            return
+        self._tooltip._shown_for_key = self._theme
+        self._tooltip.set_bonus(self._theme)
+        self._tooltip.show_at(QCursor.pos())
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        token = getattr(self._tooltip, "_hover_token", 0)
+        tooltip = self._tooltip
+
+        def _maybe_hide():
+            if getattr(tooltip, "_hover_token", 0) == token:
+                tooltip._shown_for_key = None
+                tooltip.hide()
+
+        QTimer.singleShot(0, _maybe_hide)
 
 
 class _ArcanaResultCardIcon(QLabel):
@@ -13028,41 +13236,65 @@ class _ArcanaResultCardIcon(QLabel):
 
 
 class _ArcanaThemeOption(QFrame):
-    """One Magic/Vigor pill inside ArcanaThemeChoiceDialog's table -- a
-    whole clickable row (not just a tiny radio dot) that highlights gold
-    when selected, wrapping a real QRadioButton (kept for QButtonGroup
-    exclusivity + keyboard nav) so the widget tree stays a normal radio
-    group underneath the custom look. Matches the browser mockup the
-    user approved before asking to "in diesem Design uebernehmen"
-    (2026-08-29)."""
+    """One theme pill inside ArcanaThemeChoiceDialog's grid -- a whole
+    clickable row (not just a tiny radio dot) that highlights in THIS
+    THEME'S OWN color when selected (User-Wunsch, 2026-09-13, confirmed
+    via browser mockup: "Können wir eventuell beim Selektieren der Werte
+    mit den Farben für die Sets arbeiten? Also aktuell Vigor: Gold, dann
+    Magic light blue/türkis" -- see _ARCANA_THEME_COLORS), replacing the
+    original single generic gold used for every theme. Wraps a real
+    QRadioButton (kept for QButtonGroup exclusivity + keyboard nav) so the
+    widget tree stays a normal radio group underneath the custom look.
+    Matches the browser mockup the user approved before asking to "in
+    diesem Design uebernehmen" (originally 2026-08-29, re-approved with
+    per-theme colors 2026-09-13)."""
 
-    _BASE_STYLE = (
-        "QFrame#ArcanaThemeOption { background: transparent; border: 1px solid transparent; border-radius: 8px; }"
-        "QFrame#ArcanaThemeOption:hover { background: rgba(34, 211, 238, 0.08); }"
-    )
-    _SELECTED_STYLE = (
-        "QFrame#ArcanaThemeOption { background: rgba(250, 204, 21, 0.10); "
-        "border: 1px solid rgba(250, 204, 21, 0.35); border-radius: 8px; }"
-    )
-    _RADIO_STYLE = (
-        "QRadioButton::indicator { width: 14px; height: 14px; border-radius: 7px; "
-        "border: 2px solid #64748b; background: transparent; }"
-        "QRadioButton::indicator:checked { border-color: #facc15; background: #facc15; }"
-        "QRadioButton::indicator:disabled { border-color: #334155; }"
-    )
+    # Fixed width for every pill regardless of its own label length or
+    # selected/unselected state (User-Wunsch, 2026-09-13: "jede Zelle
+    # linksbündig, 3 Spalten System und genug Abstand" -- the previous
+    # shrink-to-content pills made the grid look jagged/unstructured since
+    # a longer lord name like "Destruction +5" was visibly wider than
+    # "Time +5" in the row above it). Wide enough for the longest real
+    # label ("Destruction +5") plus the radio dot and padding.
+    _FIXED_WIDTH = 168
 
     def __init__(self, theme: str, lord: str | None, group: QButtonGroup, parent=None):
         super().__init__(parent)
         self.setObjectName("ArcanaThemeOption")
-        self.setStyleSheet(self._BASE_STYLE)
+        self._color = _ARCANA_THEME_COLORS.get(theme, "#facc15")
+        self._base_style = (
+            "QFrame#ArcanaThemeOption { background: transparent; border: 1px solid transparent; border-radius: 8px; }"
+            "QFrame#ArcanaThemeOption:hover { background: rgba(148, 163, 184, 0.10); }"
+        )
+        self._selected_style = (
+            f"QFrame#ArcanaThemeOption {{ background: {_rgba_str(self._color, 0.10)}; "
+            f"border: 1px solid {_rgba_str(self._color, 0.35)}; border-radius: 8px; }}"
+        )
+        self.setStyleSheet(self._base_style)
+        self.setFixedWidth(self._FIXED_WIDTH)
 
         row = QHBoxLayout(self)
         row.setContentsMargins(10, 6, 10, 6)
         row.setSpacing(8)
 
         self.radio = QRadioButton()
-        self.radio.setStyleSheet(self._RADIO_STYLE)
+        self.radio.setStyleSheet(
+            "QRadioButton::indicator { width: 14px; height: 14px; border-radius: 7px; "
+            "border: 2px solid #64748b; background: transparent; }"
+            f"QRadioButton::indicator:checked {{ border-color: {self._color}; background: {self._color}; }}"
+            "QRadioButton::indicator:disabled { border-color: #334155; }"
+        )
         self.radio.setEnabled(bool(lord))
+        # QRadioButton's default horizontal size policy is Minimum, not
+        # Fixed -- with no stretch anywhere else in this row, IT (not the
+        # label) was the one absorbing the pill's leftover width, so a
+        # shorter lord name (e.g. "Time +5") let the radio grow wider and
+        # pushed the label further right than a longer one (e.g.
+        # "Space +5") (User-reported, 2026-09-13, screenshot: text
+        # "rechtsbündig" on selected pills -- real bug, not intentional
+        # right-alignment). Locking this to Fixed + a trailing stretch
+        # below sends any leftover space to the end instead.
+        self.radio.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         group.addButton(self.radio)
         row.addWidget(self.radio)
 
@@ -13072,6 +13304,7 @@ class _ArcanaThemeOption(QFrame):
         self._lord_label.setStyleSheet("font-size: 12.5px; font-weight: 600; background: transparent; border: none;")
         text_col.addWidget(self._lord_label)
         row.addLayout(text_col)
+        row.addStretch(1)
 
         if lord:
             effect = ARCANA_LORD_EFFECTS.get(lord, "")
@@ -13082,8 +13315,8 @@ class _ArcanaThemeOption(QFrame):
         self.radio.toggled.connect(self._on_toggled)
 
     def _on_toggled(self, checked: bool):
-        self.setStyleSheet(self._SELECTED_STYLE if checked else self._BASE_STYLE)
-        color = "#facc15" if checked else "#e2e8f0"
+        self.setStyleSheet(self._selected_style if checked else self._base_style)
+        color = self._color if checked else "#e2e8f0"
         self._lord_label.setStyleSheet(
             f"font-size: 12.5px; font-weight: 600; color: {color}; background: transparent; border: none;"
         )
@@ -13095,17 +13328,58 @@ class _ArcanaThemeOption(QFrame):
 
 
 class ArcanaThemeChoiceDialog(QDialog):
-    """First step of the Arcana Calculator: for each of this season's
-    usable Lord card TYPES, pick whether you're running its Vigor or
-    Magic version -- each of the 5 slots is always a real, specific card
-    now, not an abstract Vigor/Magic head-count budget (User-Spezifikation,
+    """First step of the Arcana Calculator: pick this season's active
+    Season Set group, then for each usable Lord card TYPE, pick which
+    theme of that group it uses -- each slot is always a real, specific
+    card, not an abstract head-count budget (User-Spezifikation,
     2026-08-29: "Tabelle ... Magic links / Vigor rechts, 5 Zeilen
-    [untereinander] ... Radiobutton + Karte + Lord-Wert")."""
+    [untereinander] ... Radiobutton + Karte + Lord-Wert").
 
-    def __init__(self, usable_types: list[str], theme_map: dict, parent=None):
+    Season Set selector added 2026-09-13 as prep work for the Arcana
+    seasons releasing after this one (User-Wunsch: "vorbereitend arbeiten
+    für die weiteren Arcana sets ... [Vigor/Magic][Frenzy/Pureblood]
+    [PunOv/ProSoul/Indom]") -- see _ARCANA_SEASON_GROUPS. Switching groups
+    changes both the grid's columns AND which Lord card types are usable
+    at all (Scales only exists outside Vigor/Magic). Locked to Vigor/Magic
+    only in the shipped app via _ARCANA_FUTURE_SEASONS_ENABLED; the other
+    2 groups stay visible with a 🔒 so this can be flipped on later with
+    no further UI work once a new season actually goes live."""
+
+    _SEASON_BTN_STYLE = (
+        "QPushButton { background: #0f1b2e; border: 1px solid rgba(100, 116, 139, 0.35); border-radius: 9px; "
+        "padding: 9px 8px; font-size: 12px; font-weight: 600; color: #e2e8f0; }"
+        "QPushButton:checked { background: rgba(34, 211, 238, 0.10); border-color: #22d3ee; color: #22d3ee; }"
+        "QPushButton:disabled { color: #64748b; }"
+    )
+
+    def __init__(self, theme_map: dict, arcana_class_skills: dict, class_key: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle(_t("arm_arcana_theme_title"))
         self.type_to_theme: dict[str, str] | None = None
+        # Final usable types + per-type skill pools for whichever Season
+        # Set the user actually accepted -- read by the caller AFTER
+        # exec() instead of the pre-dialog _arcana_usable_and_pools() call,
+        # since that one is always based on the game's current default
+        # season and never reflects a switch made inside this dialog.
+        self.usable_types: list[str] = []
+        self.class_skill_pools: dict[str, list[dict]] = {}
+
+        self._theme_map = theme_map
+        self._arcana_class_skills = arcana_class_skills
+        self._class_key = class_key
+        self._options: dict[str, dict[str, _ArcanaThemeOption]] = {}
+        # Shared across every _ArcanaSetInfoDot this dialog builds (User-
+        # Wunsch, 2026-09-13: "das gleiche Tooltip nutzen, das du bereits
+        # bei den Arcana sets in der Info nutzt").
+        self._bonus_tooltip = ArcanaSetBonusTooltip(self)
+        # Defaults to whichever group actually contains the game's current
+        # live season (_ARCANA_ACTIVE_THEMES) instead of hardcoding index
+        # 0 -- stays correct automatically if that constant ever changes.
+        self._active_group_idx = next(
+            (i for i, (_key, _label, themes) in enumerate(_ARCANA_SEASON_GROUPS)
+             if set(themes) & _ARCANA_ACTIVE_THEMES),
+            0,
+        )
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -13114,32 +13388,40 @@ class ArcanaThemeChoiceDialog(QDialog):
         hint.setStyleSheet("color: #94a3b8; font-size: 12px;")
         layout.addWidget(hint)
 
-        header = QHBoxLayout()
-        header.addWidget(QLabel(""), 1)
-        for theme in ("Magic", "Vigor"):
-            head = QLabel(theme)
-            head.setStyleSheet("font-weight: 700; font-size: 11px; letter-spacing: 1px; color: #64748b;")
-            header.addWidget(head, 2, Qt.AlignCenter)
-        layout.addLayout(header)
+        season_label = QLabel(_t("arm_arcana_season_set_label"))
+        season_label.setStyleSheet("font-weight: 700; font-size: 11px; letter-spacing: 1px; color: #64748b;")
+        layout.addWidget(season_label)
 
-        self._options: dict[str, dict[str, _ArcanaThemeOption]] = {}
-        for ct in usable_types:
-            row = QHBoxLayout()
-            row.setSpacing(8)
-            type_label = QLabel(ct)
-            type_label.setStyleSheet("font-size: 13px; font-weight: 600;")
-            row.addWidget(type_label, 1)
-            group = QButtonGroup(self)
-            self._options[ct] = {}
-            for theme in ("Magic", "Vigor"):
-                entry = theme_map.get(theme, {}).get(ct, {})
-                option = _ArcanaThemeOption(theme, entry.get("lord"), group, self)
-                row.addWidget(option, 2)
-                self._options[ct][theme] = option
-            default_theme = "Vigor" if self._options[ct]["Vigor"].radio.isEnabled() else "Magic"
-            if self._options[ct][default_theme].radio.isEnabled():
-                self._options[ct][default_theme].radio.setChecked(True)
-            layout.addLayout(row)
+        season_row = QHBoxLayout()
+        season_row.setSpacing(10)
+        self._season_group = QButtonGroup(self)
+        self._season_group.setExclusive(True)
+        for idx, (_key, label, _themes) in enumerate(_ARCANA_SEASON_GROUPS):
+            enabled = idx == self._active_group_idx or _ARCANA_FUTURE_SEASONS_ENABLED
+            btn = QPushButton(label if enabled else f"{label}  🔒")
+            btn.setCheckable(True)
+            btn.setEnabled(enabled)
+            if not enabled:
+                btn.setToolTip(_t("arm_arcana_season_locked_tooltip"))
+            btn.setChecked(idx == self._active_group_idx)
+            btn.setStyleSheet(self._SEASON_BTN_STYLE)
+            btn.clicked.connect(lambda _c=False, i=idx: self._on_season_changed(i))
+            self._season_group.addButton(btn)
+            season_row.addWidget(btn, 1)
+        layout.addLayout(season_row)
+
+        # Real QGridLayout, rebuilt on every Season Set change (User-
+        # Wunsch, 2026-09-13: "jede Zelle linksbündig, 3 Spalten System und
+        # genug Abstand" -- a previous QVBoxLayout-of-QHBoxLayouts version
+        # could drift out of column alignment; a grid guarantees every row
+        # shares the exact same column widths, every cell explicitly left-
+        # aligned). Design confirmed via a browser mockup before porting
+        # into Qt (see feedback_visual_preview_method memory).
+        self._grid_container = QWidget()
+        self._grid = QGridLayout(self._grid_container)
+        self._grid.setHorizontalSpacing(28)
+        self._grid.setVerticalSpacing(12)
+        layout.addWidget(self._grid_container)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
@@ -13151,6 +13433,60 @@ class ArcanaThemeChoiceDialog(QDialog):
         btn_row.addWidget(ok_btn)
         layout.addLayout(btn_row)
 
+        self._rebuild_grid()
+
+    def _on_season_changed(self, idx: int):
+        self._active_group_idx = idx
+        self._rebuild_grid()
+
+    def _rebuild_grid(self):
+        _clear_layout(self._grid)
+        self._options = {}
+
+        themes = _ARCANA_SEASON_GROUPS[self._active_group_idx][2]
+        usable_types = _arcana_usable_lord_types(self._theme_map, set(themes))
+
+        for col, theme in enumerate(themes, start=1):
+            head_wrap = QWidget()
+            head_row = QHBoxLayout(head_wrap)
+            head_row.setContentsMargins(0, 0, 0, 0)
+            head_row.setSpacing(5)
+            head = QLabel(theme.upper())
+            color = _ARCANA_THEME_COLORS.get(theme, "#64748b")
+            head.setStyleSheet(f"font-weight: 700; font-size: 11px; letter-spacing: 1px; color: {color};")
+            head_row.addWidget(head)
+            head_row.addWidget(_ArcanaSetInfoDot(theme, self._bonus_tooltip))
+            head_row.addStretch(1)
+            self._grid.addWidget(head_wrap, 0, col, Qt.AlignLeft)
+
+        for row_idx, ct in enumerate(usable_types, start=1):
+            type_label = QLabel(ct)
+            type_label.setStyleSheet("font-size: 13px; font-weight: 600;")
+            self._grid.addWidget(type_label, row_idx, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            group = QButtonGroup(self)
+            self._options[ct] = {}
+            for col, theme in enumerate(themes, start=1):
+                entry = self._theme_map.get(theme, {}).get(ct, {})
+                option = _ArcanaThemeOption(theme, entry.get("lord"), group, self)
+                self._grid.addWidget(option, row_idx, col, Qt.AlignLeft)
+                self._options[ct][theme] = option
+            # Default to the LAST theme in this group's own order that
+            # actually has real data -- keeps the existing Vigor/Magic
+            # behavior (["Magic", "Vigor"], defaults to Vigor) unchanged.
+            default_theme = next(
+                (t for t in reversed(themes) if self._options[ct][t].radio.isEnabled()), themes[-1],
+            )
+            if self._options[ct][default_theme].radio.isEnabled():
+                self._options[ct][default_theme].radio.setChecked(True)
+
+        # Wide enough for the real N-column grid (type label + N fixed-
+        # width pills + generous gaps) without looking cramped (User-
+        # Wunsch, 2026-09-13: "dann muss das Fenster größer" -- confirmed
+        # against a browser mockup first, including the 3-column season).
+        width = 92 + len(themes) * (_ArcanaThemeOption._FIXED_WIDTH + 28) + 80
+        self.setMinimumWidth(max(520, width))
+        self.adjustSize()
+
     def _accept(self):
         self.type_to_theme = {}
         for ct, options in self._options.items():
@@ -13158,6 +13494,10 @@ class ArcanaThemeChoiceDialog(QDialog):
                 if option.radio.isChecked():
                     self.type_to_theme[ct] = theme
                     break
+        self.usable_types = list(self._options.keys())
+        self.class_skill_pools = {
+            ct: self._arcana_class_skills.get(ct, {}).get(self._class_key, []) for ct in self.usable_types
+        }
         self.accept()
 
 
@@ -14740,11 +15080,20 @@ class LoadoutWindow(QMainWindow):
         if not wishes:
             return
 
-        usable_types, class_skill_pools = self._arcana_usable_and_pools()
-
-        theme_dialog = ArcanaThemeChoiceDialog(usable_types, self._arcana_theme_map, self)
+        # The dialog now owns its own Season Set choice (see
+        # ArcanaThemeChoiceDialog, 2026-09-13) and can switch which types
+        # are usable at all (e.g. Scales, once a future season is
+        # enabled) -- so usable_types/class_skill_pools are read from the
+        # dialog's own result AFTER it closes, not the pre-dialog
+        # _arcana_usable_and_pools() call (that one stays as-is for the
+        # live per-skill ceiling hints elsewhere, always based on the
+        # game's current default season).
+        class_key = _skills_data_class_key(self.character_class_combo.currentText())
+        theme_dialog = ArcanaThemeChoiceDialog(self._arcana_theme_map, self._arcana_class_skills, class_key, self)
         if theme_dialog.exec() != QDialog.Accepted or not theme_dialog.type_to_theme:
             return
+        usable_types = theme_dialog.usable_types
+        class_skill_pools = theme_dialog.class_skill_pools
 
         results = _arcana_compute_combinations(
             usable_types, theme_dialog.type_to_theme, class_skill_pools, wishes, self._skill_id_to_type,

@@ -1185,3 +1185,21 @@ QListWidget::item:selected {
     color: #57637c;
     border: 1px dashed rgba(100, 116, 139, 0.25);
 }
+
+/* Same "✓ Saved" convention already established for the main app's Flow
+   Map (ui/styles.qss) -- ported here since this file is its own separate
+   stylesheet scope (Property Priority editor's Save confirmation). */
+#FlowSaveStatusLabel {
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 0px 8px;
+}
+
+#FlowSaveStatusLabel[state="saving"] {
+    color: #f59e0b;
+}
+
+#FlowSaveStatusLabel[state="saved"] {
+    color: #22c55e;
+}
