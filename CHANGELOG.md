@@ -1,3 +1,11 @@
+# Version 2.0.5
+
+## 🐛 Bug Fixes
+
+- **Critical: opening the app could silently wipe your Build Planner/Armory data (equipment, skill builds, Arcana cards) while leaving Tasks/Shopping untouched**, if a daily/weekly reset happened to be due right at startup. Caused by an internal reset-check saving the profile before the Build Planner section had finished loading from disk. Fixed by making sure nothing can save the profile until everything has been fully loaded.
+
+---
+
 # Version 2.0.4
 
 ## 🐛 Bug Fixes

@@ -2259,25 +2259,6 @@ class MainWindow(QMainWindow):
         self._sync_shopping_from_templates({})
         self._sync_tasks_from_templates({})
 
-        # Real, confirmed data-loss bug found + fixed (User-reported,
-        # 2026-09-10, screenshot: a 122 KB profile got reduced to 23 KB just
-        # from starting the packaged app): update_countdowns() used to run
-        # much earlier in this method (right after settings were read), but
-        # it ends by calling check_auto_resets() -- which, whenever a daily/
-        # weekly reset is actually due (a completely normal, frequent case:
-        # any time more than a day/week has passed since the profile was
-        # last opened), calls save_profile(silent=True) immediately. At that
-        # earlier point self.task_lists/item_templates/task_templates were
-        # NOT yet populated from `data` (see "Aktuelle Listen immer leeren"
-        # above, which runs AFTER where this call used to sit) -- so that
-        # save serialized the STALE, near-empty pre-load state straight over
-        # the real profile file on disk, permanently destroying it. Moving
-        # this call to AFTER the full population above (this exact spot) is
-        # the fix -- reproduced headlessly by loading a synthetic 400-task
-        # profile with no last_daily_reset_date recorded (forcing a reset)
-        # and confirming the file on disk kept its real size afterward.
-        self.update_countdowns()
-
         self.refresh()
         raw_maps = data.get("flow_maps")
         old_map = data.get("flow_map", {})
@@ -2303,6 +2284,30 @@ class MainWindow(QMainWindow):
         self._rebuild_characters()
         if hasattr(self.header, "set_profile"):
             self.header.set_profile(self.profile_name)
+
+        # Real, confirmed data-loss bug found + fixed (User-reported,
+        # 2026-09-10, screenshot: a 122 KB profile got reduced to 23 KB just
+        # from starting the packaged app; recurrence found + fixed 2026-09-14,
+        # this time hitting build_planner specifically -- log evidence: a
+        # "Profile saved" line landing BEFORE that same launch's "Profile
+        # loaded" line): update_countdowns() ends by calling
+        # check_auto_resets() -- which, whenever a daily/weekly reset is
+        # actually due (a completely normal, frequent case: any time more
+        # than a day/week has passed since the profile was last opened),
+        # calls save_profile(silent=True) immediately. save_profile() reads
+        # self._build_planner_state (among everything else restored above)
+        # -- calling update_countdowns() from ANY point in this method
+        # before every single field above has been restored from `data`
+        # serializes that field's STALE pre-load value (here: whatever the
+        # PREVIOUS profile/session left behind, or None on a fresh start)
+        # straight over the real profile file on disk, permanently
+        # destroying just that field while everything restored earlier
+        # stays intact -- which is exactly why the first incident only ever
+        # showed up as tasks/templates loss, and this one only ever showed
+        # up as Build Planner/Armory loss. Fix: always call this LAST, only
+        # once every single field this method restores is truly in place.
+        self.update_countdowns()
+
         self.save_last_profile(profile_path)
         logger.info("Profile loaded: %s", self.profile_name)
 
