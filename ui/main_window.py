@@ -3605,7 +3605,17 @@ class MainWindow(QMainWindow):
             self.show_toast(tr(self.language, "toast_tasks_opened"))
 
         elif page_key == "plan":
-            self.open_flow_map_window()
+            # Deferred a tick (User-reported, 2026-09-13, screenshot: a
+            # tiny ~3x4cm window with no content, just minimize/maximize/
+            # close buttons, flashes every time) -- same real bug already
+            # found + fixed for the EQ-Priority slot popup elsewhere in
+            # this app: opening a real top-level window synchronously from
+            # within the very sidebar click that triggered it can race
+            # with that click's own pending mouse-release/repaint, and
+            # Windows shows the new window's bare frame (no content
+            # painted yet) for a moment before it either gets its real
+            # size/content or gets misread as something to dismiss.
+            QTimer.singleShot(0, self.open_flow_map_window)
             self.show_toast(tr(self.language, "toast_plan_opened"))
 
         elif page_key == "settings":

@@ -171,6 +171,14 @@ def main():
             print(f"  [{i}/{len(ids)}] {entry['mainCategory']:12s} {entry['name']}")
         time.sleep(REQUEST_DELAY)
 
+    # The site's own "type" field is unreliable for Stigma skills (it comes
+    # back as "active" for many of them), while "subCategory" consistently
+    # says "stigma" -- trust subCategory here so icon filenames/app logic
+    # that key off "type" don't silently mislabel Stigma skills as Active.
+    for entry in results:
+        if entry.get("subCategory") == "stigma":
+            entry["type"] = "stigma"
+
     compute_icon_filenames(results)
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)

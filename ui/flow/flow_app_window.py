@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
     QCheckBox,
+    QMenu,
 )
 from PySide6.QtCore import Qt, QSize, QTimer, Signal
 from PySide6.QtGui import QPixmap, QIcon, QCursor
@@ -773,12 +774,20 @@ class FlowMapWindow(QMainWindow):
         self.controller.toggle_node_completed(node_id)
 
     def set_current_tool(self, tool_name: str):
+        # Real flicker found + fixed (User-reported, 2026-09-13: happens on
+        # a plain toolbar click too, not just the new right-click context
+        # menu, ruling out that new code as the cause) -- render_flow() is
+        # a full node-card rebuild (clear_node_cards() + recreate every
+        # card), and nothing about a card's appearance actually depends on
+        # current_tool (checked create_node_card directly: no reference to
+        # it at all, only the mouse handlers it wires up branch on it).
+        # Switching tools only ever needs the cursor + the toolbar label
+        # text updated -- rebuilding the entire map on every single tool
+        # click was pure unnecessary work, visible as a flicker each time.
         self.current_tool = tool_name
 
         self.apply_current_tool_cursor()
         self.update_active_tool_label()
-
-        self.render_flow()
 
     def update_active_tool_label(self):
         if not self.tr_func:
@@ -794,7 +803,41 @@ class FlowMapWindow(QMainWindow):
         name   = self.tr_func(self.language, tr_key)
         self.active_tool_label.setText(f"{prefix} {name}")
 
-    
+    def show_tool_context_menu(self, global_pos):
+        """Right-click on empty map space (User-Wunsch, 2026-09-13: "ein
+        Kontext Menü ... mit dem man das Tool ändern kann. Also similar zu
+        der Toolbar links") -- same 4 tools/icons/tooltips as the toolbar,
+        so picking one here is identical to clicking its toolbar button
+        (including keeping that button's own checked state in sync, since
+        set_current_tool() alone doesn't touch button state -- only a real
+        button click does that via the exclusive QButtonGroup).
+
+        The flicker originally reported here turned out to have nothing to
+        do with this menu at all -- it reproduced from a plain toolbar
+        click too, so the real fix (removing set_current_tool()'s
+        unnecessary render_flow() call) lives there instead. No special
+        update-batching needed on this end."""
+        tools = [
+            (self.select_tool_btn, "select", "flow_tooltip_select"),
+            (self.add_node_tool_btn, "add_node", "flow_tooltip_add_node"),
+            (self.branch_tool_btn, "branch", "flow_tooltip_branch"),
+            (self.delete_tool_btn, "delete", "flow_tooltip_delete"),
+        ]
+        menu = QMenu(self)
+        for button, tool_name, tr_key in tools:
+            label = self.tr_func(self.language, tr_key) if self.tr_func else button.toolTip()
+            action = menu.addAction(button.icon(), label)
+            action.setCheckable(True)
+            action.setChecked(self.current_tool == tool_name)
+            action.triggered.connect(
+                lambda checked=False, t=tool_name, b=button: self._apply_tool_from_context_menu(t, b)
+            )
+        menu.exec(global_pos)
+
+    def _apply_tool_from_context_menu(self, tool_name: str, button):
+        button.setChecked(True)
+        self.set_current_tool(tool_name)
+
     def set_tool_cursor(self, filename: str):
         cursor_path = self.flow_tool_icon_dir / filename
 

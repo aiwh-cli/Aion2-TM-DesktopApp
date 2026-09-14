@@ -1,6 +1,8 @@
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
 
+from ui.flow.widgets.flow_node_card import FlowNodeCard
+
 class FlowMapViewport(QWidget):
     def __init__(self, parent_window=None, parent=None):
         super().__init__(parent)
@@ -62,3 +64,20 @@ class FlowMapViewport(QWidget):
             else:
                 self.parent_window.adjust_zoom(-0.1, mouse_pos)
         event.accept()
+
+    def contextMenuEvent(self, event):
+        # Only on genuinely empty map space, not on a node (User-Wunsch,
+        # 2026-09-13: "Wenn man auf einen freien Punkt auf der Map (kein
+        # Node) mit der rechten Maustaste klickt") -- FlowNodeCard has no
+        # contextMenuEvent of its own, so a right-click on a card would
+        # otherwise bubble up here too (Qt auto-propagates an unhandled
+        # ContextMenu event to the parent chain); a plain geometry check
+        # against every node card is simpler and more robust here than
+        # relying on childAt()'s WA_TransparentForMouseEvents handling.
+        if self.pan_target:
+            local_pos = self.pan_target.mapFromParent(event.pos())
+            for card in self.pan_target.findChildren(FlowNodeCard):
+                if card.geometry().contains(local_pos):
+                    return
+        if self.parent_window:
+            self.parent_window.show_tool_context_menu(self.mapToGlobal(event.pos()))

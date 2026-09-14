@@ -1,3 +1,21 @@
+# Version 2.0.3
+
+## ✨ New Features
+
+- **Skill Planner: the Arcana Calculator now shows what a card's "leftover" levels go toward.** Once a combination's wishes are met, a card's remaining leveling points don't go to waste — each combination now lists, per card, how many of its 5 points went to your wish vs. how many are left over and which other skills they'd land on in the best case.
+- **Flow Map: right-click anywhere on empty map space to switch tools** — a context menu with the same Select/Add Node/Branch/Delete options as the left toolbar, so you don't have to move back to it every time.
+- **Build Planner: the Property Priority editor now warns before discarding unsaved changes.** Leaving via the back arrow or X after changing something (without hitting Save) now asks for confirmation first, instead of silently losing the edits.
+
+## 🐛 Bug Fixes
+
+- **Arcana Calculator could hide a real alternate combination that actually existed.** A skill fully covered by one card could still incidentally pick up a throwaway extra point on a second card, which then wrongly blocked that second card from being tried as a genuine alternative.
+- **Arcana Calculator could show a confusing "7 / 4"-style overshoot** for a wished skill covered by more than one card together — it now clearly shows the skill reaching its actual target instead.
+- Raised the bar for showing an alternate Arcana combination from covering at least 50% of your wishlist to 70%, so only genuinely useful alternatives are offered.
+- **Flow Map: switching tools (toolbar or the new right-click menu) caused a brief flicker** every time — it no longer rebuilds the whole map just to switch tools.
+- **Skill Planner: several Stigma skills (e.g. Gladiator's Armor of Balance, Assault Strike, Blade Toss, Focused Block, Forced Restraint, Fracturing Rush, Lifestealing Blade, Lunge Stance, Rage Burst, Tenaciousness) showed a blank icon and were wrongly listed under Active Skills.** Caused by an upstream data issue in the skill source picked up during the last skill-data refresh; fixed by trusting the reliable category field instead.
+
+---
+
 # Version 2.0.2
 
 ## ✨ New Features

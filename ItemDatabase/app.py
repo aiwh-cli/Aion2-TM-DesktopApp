@@ -246,6 +246,12 @@ _EQUIPMENT_SLOT_PLACEHOLDER = {
     # exists for Wings1, so it no longer needs the faded-real-item-icon
     # fallback (_SYNTHETIC_SLOT_PLACEHOLDER_ITEM) Rune1/Rune2 still use.
     "Wings1": "wings",
+    # Drawn to match this pack's existing flat-silhouette style (User-
+    # Wunsch, 2026-09-13: "ein passendes Design beim Cloak ... das mit den
+    # Boots matcht") -- same reason as Wings1 above: real placeholder art
+    # now exists, so Cloak no longer needs the faded-real-item-icon
+    # fallback either.
+    "Cloak": "cloak",
 }
 
 def _placeholder_icon(subdir: str, name: str) -> QIcon | None:
@@ -3147,8 +3153,22 @@ def _arcana_best_card_contribution(
        pool order -- a real card's leveling doesn't stop just because
        your specific wish was already satisfied.
 
-    Returns {skill_id: added_value} for the chosen skills (empty only if
-    the type's pool has nothing at all matching its category)."""
+    Returns ({skill_id: added_value}, need_based_ids) for the chosen
+    skills (empty only if the type's pool has nothing at all matching its
+    category) -- need_based_ids is the subset of the RESULT that was
+    actually chosen because of real remaining wish need (phase 1 above),
+    as opposed to pure filler (phase 1's "fewer than 4 wished skills"
+    fallback). _arcana_compute_combinations' diversification only
+    excludes need_based_ids when searching for a second combination (see
+    its own docstring) -- a filler pick landing on a skill that ANOTHER
+    type already fully covered via real need is incidental (that type
+    just had unused slots left over), not a genuine second path to that
+    skill, and excluding it too was blocking real alternatives that
+    should have been findable (User-reported, 2026-09-13: "hier gibt es
+    doch sicher noch andere Kombinationen" -- confirmed via direct
+    inspection that a single wished skill fully covered by one type still
+    incidentally showed up as a 1-point filler pick on a second type,
+    which then got excluded right along with the real assignment)."""
     def remaining_need(sid: str, value: int) -> int:
         return max(0, wishes.get(sid, 0) - covered.get(sid, 0) - value)
 
@@ -3156,10 +3176,11 @@ def _arcana_best_card_contribution(
         need = max(0, wishes.get(sid, 0) - covered.get(sid, 0))
         return (-need, priority_rank.get(sid, float("inf")), sid)
 
-    chosen = sorted(
+    need_chosen = sorted(
         (sid for sid in eligible if wishes.get(sid, 0) - covered.get(sid, 0) > 0),
         key=choice_key,
     )[:_ARCANA_SKILL_SLOTS_PER_CARD]
+    chosen = list(need_chosen)
     if len(chosen) < _ARCANA_SKILL_SLOTS_PER_CARD:
         filler = sorted(
             (sid for sid in full_pool if sid not in chosen),
@@ -3167,7 +3188,7 @@ def _arcana_best_card_contribution(
         )
         chosen += filler[: _ARCANA_SKILL_SLOTS_PER_CARD - len(chosen)]
     if not chosen:
-        return {}
+        return {}, set()
 
     values = {sid: _ARCANA_SKILL_BASELINE for sid in chosen}
     budget = _ARCANA_CARD_EXTRA_BUDGET
@@ -3181,7 +3202,7 @@ def _arcana_best_card_contribution(
         )
         values[best_sid] += 1
         budget -= 1
-    return values
+    return values, set(need_chosen)
 
 
 def _arcana_best_combination(
@@ -3202,14 +3223,14 @@ def _arcana_best_combination(
         theme = type_to_theme.get(ct)
         if not theme:
             continue
-        contribution = _arcana_best_card_contribution(
+        contribution, need_based_ids = _arcana_best_card_contribution(
             eligible_by_type.get(ct, []), full_pool_by_type.get(ct, []), priority_rank, wishes, covered,
         )
         if not contribution:
             continue
         for sid, value in contribution.items():
             covered[sid] = covered.get(sid, 0) + value
-        path.append({"type": ct, "theme": theme, "skill_ids": contribution})
+        path.append({"type": ct, "theme": theme, "skill_ids": contribution, "need_based_ids": need_based_ids})
     return covered, path
 
 
@@ -3221,17 +3242,31 @@ def _arcana_compute_combinations(
 ) -> list[dict]:
     """Up to max_results distinct combinations, best first: the single
     result from _arcana_best_combination, then that same sequential fill
-    repeated with the previous result's exact (type, skill) pairs excluded
-    from that type's eligible AND full pool each time, forcing a
-    structurally different combination whenever a type's real pool has
-    more viable wished skills than its 4 slots (or a skill is shared
-    across more than one type's pool) -- the only remaining source of
-    alternatives now that each type's theme is fixed rather than
-    searched. Pruning full_pool_by_type too (not just eligible_by_type)
-    matters: otherwise a skill excluded as a WISH target could still
-    silently reappear as plain FILLER on the very same card (filler
-    selection draws from the whole pool), quietly re-covering the same
-    wish and making the "different" combination not actually different."""
+    repeated with the previous result's (type, skill) pairs excluded from
+    that type's eligible AND full pool each time, forcing a structurally
+    different combination whenever a type's real pool has more viable
+    wished skills than its 4 slots (or a skill is shared across more than
+    one type's pool) -- the only remaining source of alternatives now
+    that each type's theme is fixed rather than searched. Pruning
+    full_pool_by_type too (not just eligible_by_type) matters: otherwise
+    a skill excluded as a WISH target could still silently reappear as
+    plain FILLER on the very same card (filler selection draws from the
+    whole pool), quietly re-covering the same wish and making the
+    "different" combination not actually different.
+
+    Only excludes need_based_ids (see _arcana_best_card_contribution),
+    not every skill_id a type touched -- a skill that ended up on a
+    SECOND type purely as incidental filler (that type had unused slots
+    left over after its own real wishes, and this skill happened to rank
+    high in the fallback priority-list order) never actually contributed
+    to satisfying the wish there, so excluding it too was blocking a real
+    second combination that should have been findable by simply routing
+    that wish through the other type instead (User-reported, 2026-09-13:
+    "hier gibt es doch sicher noch andere Kombinationen" -- confirmed via
+    direct inspection: a single wished skill, fully covered by one type
+    alone, still incidentally showed up as a 1-point filler pick on a
+    second type in the same result, and that filler pick alone was enough
+    to make every subsequent solve attempt collapse to 0% coverage)."""
     if not wishes:
         return []
 
@@ -3260,7 +3295,7 @@ def _arcana_compute_combinations(
             break
         results.append({"assignments": path, "covered": covered})
         for a in path:
-            for sid in a["skill_ids"]:
+            for sid in a["need_based_ids"]:
                 excluded.add((a["type"], sid))
     return results
 
@@ -11724,6 +11759,16 @@ class StatPriorityEditorDialog(QWidget):
         # close affordances) is the only path that still navigates away.
         self._on_save_callback = on_save
         self._data = copy.deepcopy(profiles)
+        # Snapshot to detect unsaved changes on the way out (User-Wunsch,
+        # 2026-09-14: "wenn man ... via Pfeil zurück oder X rausgeht - wird
+        # ja nichts gespeichert - ich möchte hier eine Warnmeldung geben")
+        # -- refreshed on every successful Save, compared against in
+        # _cancel(). self._data itself is already kept live-updated across
+        # Gear-Typ/Rolle switches (_on_profile_changed flushes the
+        # currently-visible combos into it before switching tabs), so a
+        # plain equality check here also correctly catches edits made on a
+        # tab the user then switched away from without saving.
+        self._saved_snapshot = copy.deepcopy(self._data)
         self._available_options = _load_stat_priority_options()
         # Skill names from the current class's Priority List, already in
         # that list's rank order -- shown first in each relevant category's
@@ -11993,6 +12038,21 @@ class StatPriorityEditorDialog(QWidget):
         self._load_profile_into_combos()
 
     def _cancel(self):
+        # Real bug found + fixed (User-Wunsch, 2026-09-14: "wenn man ...
+        # via Pfeil zurück oder X rausgeht - wird ja nichts gespeichert -
+        # ich möchte hier eine Warnmeldung geben") -- back-arrow/X used to
+        # silently discard any unsaved edits with no warning at all. Flush
+        # first so an edit made on the CURRENTLY visible tab (never
+        # flushed into self._data until now) is included in the
+        # comparison too, not just edits from tabs already switched away
+        # from.
+        self._flush_combos_into_data()
+        if self._data != self._saved_snapshot:
+            reply = QMessageBox.question(
+                self, _t("arm_unsaved_changes_title"), _t("arm_unsaved_changes_text"),
+            )
+            if reply != QMessageBox.Yes:
+                return
         if self._on_done:
             self._on_done(None)
 
@@ -12000,6 +12060,7 @@ class StatPriorityEditorDialog(QWidget):
         self._flush_combos_into_data()
         if self._on_save_callback:
             self._on_save_callback(self._data)
+        self._saved_snapshot = copy.deepcopy(self._data)
         self.save_status_label.setVisible(True)
         QTimer.singleShot(2000, lambda: self.save_status_label.setVisible(False))
 
@@ -13584,7 +13645,7 @@ class ArcanaResultsDialog(QDialog):
     ("einen Grund zeigen, warum gewisse Skills nicht gepusht werden
     koennen")."""
 
-    _MIN_COVERAGE_PERCENT = 50
+    _MIN_COVERAGE_PERCENT = 70
 
     # Emitted with one combination's {card_type: assignment} dict when the
     # user clicks that combination's "Use this combination" button (User-
@@ -13605,12 +13666,17 @@ class ArcanaResultsDialog(QDialog):
         self.resize(640, 720)
         self._card_tooltip = ArcanaCardTooltip(self)
 
-        # Only combinations that actually cover more than half the total
-        # wishlist are worth showing -- a combo that reaches almost none
-        # of what you asked for isn't a useful "alternative" (User-Wunsch,
+        # Only combinations that actually cover most of the total
+        # wishlist are worth showing -- a combo that reaches little of
+        # what you asked for isn't a useful "alternative" (User-Wunsch,
         # 2026-08-29: "nur Kombinationen anzeigen, die besser als 50%
         # sind ... eine Kombination von 5 Skills, die nicht erreicht
-        # werden, brauchen wir nicht"). If NONE clear that bar, the
+        # werden, brauchen wir nicht"; raised to 70% on 2026-09-13 after
+        # confirming the single-combination case wasn't a bug -- with
+        # each wished skill only reachable through one specific type/theme
+        # slot, excluding that slot from a second solve attempt leaves
+        # nothing left to wish-match at all, so that alternate naturally
+        # scores far below any reasonable bar). If NONE clear that bar, the
         # wishlist itself is too ambitious for what 5 real cards can ever
         # deliver -- say so instead of showing a discouraging result
         # (this shouldn't normally happen at all, since the live "max +N"
@@ -13673,14 +13739,64 @@ class ArcanaResultsDialog(QDialog):
                 divider.setFrameShape(QFrame.HLine)
                 body.addWidget(divider)
 
+                # Cross-card excess attribution (User-corrected, 2026-09-13,
+                # screenshot: "Incand. Blow 7/4" with no leftover note for
+                # Chalice -- "müsste doch dann Incand Blow 4/4 stehen und
+                # unten noch eine weitere Karte mit 2/5"): need_based_ids
+                # only reflects what looked like real need AT THE TIME each
+                # card was processed sequentially, so if an EARLIER card's
+                # chosen skill turns out to be fully covered by a LATER
+                # card alone, the earlier card's contribution was never
+                # actually necessary -- reclassify whatever portion of a
+                # need-based value exceeds the wish (attributed in
+                # processing order) as leftover instead, same as any other
+                # filler pick.
+                #
+                # Attribution order deliberately processes non-Chalice/
+                # Scales cards FIRST, Chalice/Scales LAST (User-Wunsch,
+                # 2026-09-13: "verbrauch erst die Punkte auf den Karten,
+                # die nicht scale oder Kelch sind") -- Chalice/Scales
+                # already show as generic "all skills" in the leftover
+                # note below (their pool is too broad to name one specific
+                # pick meaningfully), so any excess is best attributed
+                # there rather than to a small, fixed-purpose card whose
+                # leftover skills ARE individually named and would
+                # otherwise show a confusing partial value.
+                #
+                # excess_budget is tracked in BUDGET terms (baseline
+                # already excluded), not raw value -- baseline(1) is
+                # granted free to every chosen skill regardless of wish/
+                # filler status, so it can never itself be "excess budget"
+                # (subtracting it a second time would go negative).
+                attribution_order = sorted(
+                    result["assignments"], key=lambda a: a["type"] in ("Chalice", "Scales"),
+                )
+                remaining_wish = dict(wishes)
+                excess_budget_by_type_skill: dict[tuple[str, str], int] = {}
+                for a in attribution_order:
+                    for sid in a["need_based_ids"]:
+                        value = a["skill_ids"][sid]
+                        still_needed = remaining_wish.get(sid, 0)
+                        attributed = min(value, still_needed)
+                        remaining_wish[sid] = still_needed - attributed
+                        excess_budget = (value - 1) - max(0, attributed - 1)
+                        if excess_budget > 0:
+                            excess_budget_by_type_skill[(a["type"], sid)] = excess_budget
+
                 for sid, need in wishes.items():
                     covered = result["covered"].get(sid, 0)
                     name = skill_names.get(sid, sid)
                     fully_covered = covered >= need
                     color = "#4ade80" if fully_covered else "#f87171"
+                    # Capped at the wish itself -- any amount beyond it is
+                    # now explicitly accounted for in the leftover note
+                    # below instead, so it isn't shown twice in two
+                    # different, seemingly-contradictory forms ("7/4" here
+                    # AND "+3 leftover" there).
+                    display_covered = min(covered, need)
                     summary = QLabel(
                         f'<span style="color:{color};font-weight:700;">'
-                        f'{_t("arm_arcana_covered_label", name=name, covered=covered, wish=need)}</span>'
+                        f'{_t("arm_arcana_covered_label", name=name, covered=display_covered, wish=need)}</span>'
                     )
                     summary.setTextFormat(Qt.RichText)
                     summary.setWordWrap(True)
@@ -13694,6 +13810,82 @@ class ArcanaResultsDialog(QDialog):
                         reason.setStyleSheet("color: #94a3b8; font-size: 11px;")
                         reason.setWordWrap(True)
                         body.addWidget(reason)
+
+                # Leftover-levels note (User-Wunsch, 2026-09-13: "wenn ein
+                # Ziel erreicht ist und zb vom Kelch noch Level über sind
+                # ... zeigen, auf welchen Skills diese möglichen Level
+                # verteilt werden können") -- a card's 4 slots/5 budget
+                # points don't stop once its wishes are met (see
+                # _arcana_best_card_contribution's own "Immer alle 5
+                # verteilen" rule), so any card with capacity left over
+                # after its real wishes still lands on OTHER skills. Chalice
+                # (and Scales, once enabled) match either Active or Passive
+                # and draw from a large class-wide pool, so naming one
+                # arbitrary pick there is less meaningful than for a small,
+                # fixed-purpose pool -- shown as "all skills" instead per
+                # the user's own instruction.
+                leftover_lines = []
+                for a in result["assignments"]:
+                    # Only cards that actually served at least one wish
+                    # here -- a card with zero need_based_ids never
+                    # touched your wishlist at all, so its filler isn't
+                    # "leftover from reaching a target", it's simply not
+                    # relevant to this wishlist.
+                    if not a["need_based_ids"]:
+                        continue
+                    # The real distributable pool per card is
+                    # _ARCANA_CARD_EXTRA_BUDGET (5), NOT baseline+budget
+                    # (User-corrected, 2026-09-13: "du musst 4x level 1
+                    # rausrechnen, da alle Skills auf level 1 starten...
+                    # Somit müsste /5 das max sein") -- _ARCANA_SKILL_
+                    # BASELINE(1) is granted free to EVERY chosen skill
+                    # slot regardless of wish/filler status, it isn't
+                    # something spent from the budget. need_budget only
+                    # counts the portion of each need-based skill's budget
+                    # that was genuinely still needed (see excess_budget_
+                    # by_type_skill above); filler_budget is whatever's
+                    # left of the 5. A skill sitting at exactly baseline
+                    # (0 extra) got nothing from that leftover budget, so
+                    # it's excluded from the list -- and if literally
+                    # nothing is left (filler_budget <= 0), this card has
+                    # no leftover note at all.
+                    need_budget = sum(
+                        (a["skill_ids"][sid] - 1) - excess_budget_by_type_skill.get((a["type"], sid), 0)
+                        for sid in a["need_based_ids"]
+                    )
+                    filler_budget = _ARCANA_CARD_EXTRA_BUDGET - need_budget
+                    if filler_budget <= 0:
+                        continue
+                    bonus_filler_ids = [
+                        sid for sid in a["skill_ids"]
+                        if sid not in a["need_based_ids"] and a["skill_ids"][sid] > _ARCANA_SKILL_BASELINE
+                    ]
+                    # Need-based skills with a leftover excess portion
+                    # (like Chalice's Incandescent Blow once Compass alone
+                    # already covers the wish) show up here too, displayed
+                    # by their own card's actual contributed value.
+                    excess_ids = [sid for sid in a["need_based_ids"] if (a["type"], sid) in excess_budget_by_type_skill]
+                    display_ids = bonus_filler_ids + excess_ids
+                    if a["type"] in ("Chalice", "Scales"):
+                        skills_text = _t("arm_arcana_leftover_all_skills")
+                    else:
+                        skills_text = ", ".join(
+                            _t("arm_arcana_leftover_skill_value", name=skill_names.get(sid, sid), value=a["skill_ids"][sid])
+                            for sid in display_ids
+                        )
+                    leftover_lines.append(_t(
+                        "arm_arcana_leftover_line", type=a["type"], need=need_budget,
+                        total=_ARCANA_CARD_EXTRA_BUDGET, filler=filler_budget, skills=skills_text,
+                    ))
+                if leftover_lines:
+                    leftover_header = QLabel(_t("arm_arcana_leftover_header"))
+                    leftover_header.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 700; margin-top: 4px;")
+                    body.addWidget(leftover_header)
+                    for line in leftover_lines:
+                        leftover_label = QLabel(line)
+                        leftover_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
+                        leftover_label.setWordWrap(True)
+                        body.addWidget(leftover_label)
 
                 apply_btn = QPushButton(_t("arm_arcana_apply_combination"))
                 apply_btn.setObjectName("EqPriorityButton")
@@ -19887,7 +20079,7 @@ class LoadoutWindow(QMainWindow):
         self._refresh_arcana_calculator_button()
 
     def _slot_synthetic_placeholder_icon(self, slot_id: str, size: int) -> QIcon | None:
-        """Faded real item icon for an empty Rune/Wings slot -- see
+        """Faded real item icon for an empty Rune slot -- see
         _SYNTHETIC_SLOT_PLACEHOLDER_ITEM's own comment for why (no
         third-party placeholder art exists for these). Returns None (not
         yet cached, a request was fired) exactly like IconCache.pixmap's
@@ -21043,7 +21235,7 @@ class LoadoutWindow(QMainWindow):
             pix = self.icon_cache.pixmap(url, 32, grade=current_item.get("grade"))
             if pix:
                 self.equip_item_icon_label.setPixmap(pix)
-        # Empty Rune/Wings slots' faded placeholder icon requests this same
+        # Empty Rune slots' faded placeholder icon requests this same
         # signal to land on (see _slot_synthetic_placeholder_icon) -- the
         # loop above only ever matches EQUIPPED slots, so an empty slot
         # waiting on its representative icon needs its own check here.
