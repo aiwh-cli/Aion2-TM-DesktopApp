@@ -12017,6 +12017,17 @@ class StatPriorityEditorDialog(QWidget):
                 completer.popup().hide()
             combo.blockSignals(False)
 
+    def refresh_skill_priority_names(self, skill_priority_names: dict[str, list[str]]):
+        """Re-syncs the Priority-List-derived skill names shown at the top
+        of every category's dropdown options, without discarding whatever
+        is currently selected (_rebuild_category_combos with no
+        forced_selections reads the combos' OWN current state first) --
+        called from outside by _refresh_open_stat_priority_editor whenever
+        the Priority List changes while this editor is still on screen."""
+        self._skill_priority_names = skill_priority_names
+        for key in self._category_combos:
+            self._rebuild_category_combos(key)
+
     def _on_profile_changed(self, gear_type: str | None = None, role: str | None = None):
         self._flush_combos_into_data()
         if gear_type:
@@ -14186,6 +14197,14 @@ class LoadoutWindow(QMainWindow):
         # card rebuild (see _arcana_ceiling_for_skill).
         self._arcana_wish_plus_buttons: dict[str, QPushButton] = {}
         self._skill_level_labels: dict[str, QLabel] = {}
+        # Active/Passive skills' own level "+" buttons (User-Wunsch,
+        # 2026-09-14: "man die weißen level nur verteilen kann, sofern oben
+        # noch Skillpunkte ... vorhanden sind") -- disabled once the global
+        # Skill Points pool hits 0, kept live-updated from
+        # _refresh_skillpoints_label since that's already the one central
+        # place that recomputes the remaining pool. Stigma isn't included --
+        # it spends from its own separate, uncapped Stigma Point pool.
+        self._skill_level_plus_buttons: dict[str, QPushButton] = {}
         self._skill_star_labels: dict[str, QLabel] = {}
         # Empty placeholder -- the real per-type [None] entries are only
         # added once _build_skill_priority_tab actually runs (later in this
@@ -14292,13 +14311,13 @@ class LoadoutWindow(QMainWindow):
         self._monolith_level = value
         self._refresh_skillpoints_label()
 
-    def _refresh_skillpoints_label(self):
-        """Shows what's actually still LEFT to spend, not the flat total --
-        every point put into a skill (see _on_skill_level_changed) counts
-        against this (User-Wunsch, 2026-08-27: "pro Skillpunkt der gesetzt
-        wird, oben ein Skillpunkt angezogen werden"). Spent points come out
-        of the white leveling pool first, then the turquoise Monolith pool,
-        matching how the two numbers already read left-to-right."""
+    def _skill_points_remaining(self) -> int:
+        """Total Skill Points (white leveling pool + turquoise Monolith
+        bonus) not yet spent on any non-Stigma skill -- shared by the
+        "Skillpunkte frei" label and the per-skill level "+" buttons'
+        enabled state (User-Wunsch, 2026-09-14: the "+" buttons must stop
+        working once this hits 0, not just clamp each skill individually
+        at its own 10-level cap)."""
         base = _SKILLPOINTS_BASE_AT_LEVEL_45
         bonus = _monolith_skillpoints(self._monolith_level)
         # Only the first _SKILL_LEVEL_BASE_CAP levels of any NON-Stigma
@@ -14315,13 +14334,26 @@ class LoadoutWindow(QMainWindow):
             min(v, _SKILL_LEVEL_BASE_CAP) for sid, v in self._skill_levels.items()
             if self._skill_id_to_type.get(sid) != "stigma"
         )
-        remaining = max(0, base + bonus - spent)
+        return max(0, base + bonus - spent)
+
+    def _refresh_skillpoints_label(self):
+        """Shows what's actually still LEFT to spend, not the flat total --
+        every point put into a skill (see _on_skill_level_changed) counts
+        against this (User-Wunsch, 2026-08-27: "pro Skillpunkt der gesetzt
+        wird, oben ein Skillpunkt angezogen werden"). Spent points come out
+        of the white leveling pool first, then the turquoise Monolith pool,
+        matching how the two numbers already read left-to-right."""
+        base = _SKILLPOINTS_BASE_AT_LEVEL_45
+        remaining = self._skill_points_remaining()
         remaining_base = min(remaining, base)
         remaining_bonus = remaining - remaining_base
         self.skillpoints_value_lbl.setText(
             f"<span style='color:white; font-weight:700;'>{remaining_base}</span> "
             f"<span style='color:#22d3ee; font-weight:700;'>(+{remaining_bonus})</span>"
         )
+        can_spend = remaining > 0
+        for plus_btn in self._skill_level_plus_buttons.values():
+            plus_btn.setEnabled(can_spend)
 
     def _refresh_stigma_points_label(self):
         """Just a running count of points assigned to Stigma-type skills,
@@ -14781,16 +14813,37 @@ class LoadoutWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return
         builds.pop(name, None)
-        self._current_build_name = next(iter(builds))
+        self._set_current_build_name(next(iter(builds)))
         self._rebuild_skill_build_tabs()
         self._load_current_build_state()
+
+    def _set_current_build_name(self, name: str):
+        """Central setter for self._current_build_name -- besides updating
+        the Skill Planner tab's own "which build am I viewing" state, also
+        keeps the CURRENT Equip Build's linked_skill_build pointed at the
+        SAME build, and refreshes the Equipment tab's own "Arcana / Skill
+        Planner:" dropdown to match (User-Wunsch, 2026-09-14: the two used
+        to be able to silently diverge -- switch to a build here, pick a
+        DIFFERENT one via that other dropdown, then switch back here, and
+        the Equip Build stayed linked to the other dropdown's stale pick,
+        so Arcana card bonuses quietly stopped counting with no
+        indication why. User's explicit call: "Arcana/Skillplaner ... und
+        dem Skillplaner laufen Synchron" -- always keep them equal instead
+        of allowing an independent pin)."""
+        self._current_build_name = name
+        class_name = self.character_class_combo.currentText().strip().lower()
+        self._ensure_class_equip_builds(class_name)
+        equip_build = self._equip_builds_data[class_name].get(self._current_equip_build_name)
+        if equip_build is not None:
+            equip_build["linked_skill_build"] = name
+        self._refresh_build_planner_settings_row()
 
     def _on_switch_build(self, build_name: str):
         if build_name == self._current_build_name:
             return
         class_name = self.character_class_combo.currentText().strip().lower()
         self._save_current_build_state(class_name)
-        self._current_build_name = build_name
+        self._set_current_build_name(build_name)
         # Re-syncs BOTH build-tab rows' checked button (User-reported,
         # 2026-08-29: "Wenn man bei Arcana auf Default anzeigt, wird beim
         # Skillplaner nicht gewechselt") -- clicking a tab in one row only
@@ -14813,7 +14866,7 @@ class LoadoutWindow(QMainWindow):
             return
         self._save_current_build_state(class_name)
         builds[name] = self._empty_build_state()
-        self._current_build_name = name
+        self._set_current_build_name(name)
         self._rebuild_skill_build_tabs()
         self._load_current_build_state()
 
@@ -14838,7 +14891,7 @@ class LoadoutWindow(QMainWindow):
             "priority": {k: list(v) for k, v in source["priority"].items()},
             "arcana_cards": dict(source.get("arcana_cards", {})),
         }
-        self._current_build_name = name
+        self._set_current_build_name(name)
         self._rebuild_skill_build_tabs()
         self._load_current_build_state()
 
@@ -14893,6 +14946,11 @@ class LoadoutWindow(QMainWindow):
             self._refresh_skill_description_view()
         else:
             self._refresh_favorite_stars()
+
+        # Same "don't go stale" treatment for an already-open Property
+        # Priority editor -- see _refresh_open_stat_priority_editor's own
+        # docstring for why (User-reported, 2026-09-14).
+        self._refresh_open_stat_priority_editor()
 
     def _build_priority_slot(self, type_key: str, index: int, skill: dict | None) -> QWidget:
         slot = QWidget()
@@ -14986,6 +15044,7 @@ class LoadoutWindow(QMainWindow):
         self._skill_level_labels = {}
         self._skill_star_labels = {}
         self._arcana_wish_plus_buttons = {}
+        self._skill_level_plus_buttons = {}
 
         class_name = _skills_data_class_key(self.character_class_combo.currentText())
         all_skills = sorted(self._skills_by_class.get(class_name, []), key=lambda s: s.get("name", ""))
@@ -15117,6 +15176,9 @@ class LoadoutWindow(QMainWindow):
         plus_btn.setCursor(Qt.PointingHandCursor)
         plus_btn.clicked.connect(lambda checked=False, sid=skill_id: self._on_skill_level_changed(sid, 1))
         level_row.addWidget(plus_btn)
+        if skill_type != "stigma":
+            plus_btn.setEnabled(self._skill_points_remaining() > 0)
+            self._skill_level_plus_buttons[skill_id] = plus_btn
 
         level_row.addStretch(1)
         outer.addLayout(level_row)
@@ -15194,6 +15256,12 @@ class LoadoutWindow(QMainWindow):
         # passive und aktive skills maximal 10 level erhalten können") --
         # previously unbounded above, only a floor of 0 was enforced.
         is_stigma = self._skill_id_to_type.get(skill_id) == "stigma"
+        # Belt-and-suspenders alongside the "+"-button's own disabled state
+        # (User-Wunsch, 2026-09-14) -- a raise on a non-Stigma skill is
+        # refused outright once the global Skill Points pool is exhausted,
+        # regardless of this skill's own (separate) 10-level cap below.
+        if delta > 0 and not is_stigma and self._skill_points_remaining() <= 0:
+            return
         cap = _STIGMA_LEVEL_BASE_CAP if is_stigma else _SKILL_LEVEL_BASE_CAP
         new_value = max(0, min(cap, self._skill_levels.get(skill_id, 0) + delta))
         self._skill_levels[skill_id] = new_value
@@ -15345,7 +15413,7 @@ class LoadoutWindow(QMainWindow):
 
         if target_name != current_build_name:
             self._save_current_build_state(class_name)
-            self._current_build_name = target_name
+            self._set_current_build_name(target_name)
             self._rebuild_skill_build_tabs()
             self._load_current_build_state()  # also covers _refresh_arcana_equip_slots/_recompute_skill_bonus
         else:
@@ -19677,6 +19745,22 @@ class LoadoutWindow(QMainWindow):
         if equip_build is None:
             return
         equip_build["linked_skill_build"] = build_name
+        # Keeps the Skill Planner tab's own view in lockstep with this
+        # dropdown (User-Wunsch, 2026-09-14: "Arcana/Skillplaner ... laufen
+        # Synchron") -- the two used to be independent (an Equip Build
+        # could stay "linked" to a build no longer shown anywhere), which
+        # silently broke Arcana card scaling once they diverged: switch
+        # this dropdown to build B, switch back to build A via the Skill
+        # Planner tab's OWN selector, and this dropdown's pick stayed
+        # stuck on B with no indication why A's Arcana cards stopped
+        # counting. Now this dropdown and the Skill Planner tab's build-
+        # tab row are just two different places to change the SAME active
+        # build, never an independent per-Equip-Build pin.
+        if build_name != self._current_build_name:
+            self._save_current_build_state(class_name)
+            self._current_build_name = build_name
+            self._rebuild_skill_build_tabs()
+            self._load_current_build_state()
         self._refresh_stat_info()
         self._recompute_skill_bonus()
 
@@ -21048,6 +21132,25 @@ class LoadoutWindow(QMainWindow):
         if result_profiles is not None:
             self._stat_priority_profiles = result_profiles
         self.equip_view_stack.setCurrentIndex(0)
+
+    def _refresh_open_stat_priority_editor(self):
+        """Keeps an already-open Property Priority editor's skill-name
+        dropdown options (and their colour-coding) in sync with the
+        Priority List, instead of only picking up changes the NEXT time
+        the editor is reopened (StatPriorityEditorDialog builds a brand
+        new instance from current state on every open, but an instance
+        already on screen never re-reads anything on its own). Covers
+        both a direct Priority List reorder AND switching to a different
+        Arcana/Skill Planner build (_load_current_build_state swaps in a
+        different _skill_priority_ids before calling
+        _rebuild_all_priority_rows, which is what actually triggers this).
+        User-reported, 2026-09-14: after switching the build dropdown to
+        a different profile, the editor kept showing the PREVIOUS
+        profile's skill names/selections until closed and reopened."""
+        if self._stat_priority_editor_widget is not None:
+            self._stat_priority_editor_widget.refresh_skill_priority_names(
+                self._skill_priority_names_by_type()
+            )
 
     def _skill_priority_names_by_type(self) -> dict[str, list[str]]:
         """Current class's Active/Passive Priority List, resolved from ids

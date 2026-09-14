@@ -1,3 +1,13 @@
+# Version 2.0.4
+
+## 🐛 Bug Fixes
+
+- **Build Planner: an already-open Property Priority editor could show stale skill names** after reordering the Priority List or switching to a different Arcana/Skill Planner build — it now refreshes live instead of only picking up the change the next time it's reopened.
+- **Build Planner: switching the Arcana/Skill Planner build via the Equipment tab's dropdown and the Skill Planner tab's own selector could silently drift apart**, leaving an Equip Build's Arcana card bonus counting a different (often empty) build than the one actually shown — both selectors now always stay in sync.
+- **Skill Planner: Active/Passive skill levels could be raised past the actual Skill Points available**, since only each individual skill's own 10-level cap was enforced. The level "+" button now stops working once the Skill Points pool (white + turquoise) hits 0.
+
+---
+
 # Version 2.0.3
 
 ## ✨ New Features
