@@ -83,6 +83,8 @@ TRANSLATIONS = {
         "filter_by": "Filtern nach ▾",
         "filter_by_all": "Alle",
         "filter_by_events": "Event",
+        "todo_char_filter_btn": "Alle Charaktere ▾",
+        "todo_char_filter_all": "Alle Charaktere",
 
         # ================= STATS =================
         "total": "Gesamt",
@@ -173,6 +175,7 @@ TRANSLATIONS = {
         "about_github":     "GitHub",
         "bug_report_btn":   "🐛 Bug melden",
         "about_copy_ver":   "Version kopieren",
+        "about_changelog_history": "Changelog",
 
         # ================= RESET SETTINGS =================
         "reset_timer": "Reset Timer",
@@ -977,6 +980,8 @@ TRANSLATIONS = {
         "filter_by": "Фильтр ▾",
         "filter_by_all": "Все",
         "filter_by_events": "Событие",
+        "todo_char_filter_btn": "Все персонажи ▾",
+        "todo_char_filter_all": "Все персонажи",
 
         # ================= STATS =================
         "total": "Всего",
@@ -1067,6 +1072,7 @@ TRANSLATIONS = {
         "about_github":     "GitHub",
         "bug_report_btn":   "🐛 Сообщить об ошибке",
         "about_copy_ver":   "Скопировать версию",
+        "about_changelog_history": "Журнал изменений",
 
         # ================= RESET SETTINGS =================
         "reset_timer": "Таймер сброса",
@@ -1870,6 +1876,8 @@ TRANSLATIONS = {
         "filter_by": "Filter by ▾",
         "filter_by_all": "All",
         "filter_by_events": "Event",
+        "todo_char_filter_btn": "All Characters ▾",
+        "todo_char_filter_all": "All Characters",
 
         # ================= STATS =================
         "total": "Total",
@@ -1960,6 +1968,7 @@ TRANSLATIONS = {
         "about_github":     "GitHub",
         "bug_report_btn":   "🐛 Report Bug",
         "about_copy_ver":   "Copy version",
+        "about_changelog_history": "Changelog",
 
         # ================= RESET SETTINGS =================
         "reset_timer": "Reset Timer",

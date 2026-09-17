@@ -16,6 +16,76 @@ from core.app_logger import get_log_path
 
 _PAYPAL_URL = "https://www.paypal.com/donate/?hosted_button_id=US4YUPTVHG87C"
 
+# Real, confirmed root cause (2026-09-16): #dayButton[active="true"]/
+# #toggleButton[active="true"] in styles.qss are correct and DO paint
+# correctly when applied directly to a widget instance (verified: an
+# identical rule set via btn.setStyleSheet() rendered its background
+# every time) -- but the SAME rule, reaching these specific buttons only
+# through MainWindow's app-wide cascaded setStyleSheet(), never painted
+# a background (border/color/font-weight from the same rule still came
+# through fine). Rather than chase that cascade quirk further, these
+# constants + _apply_active_button_style() below apply the "active" look
+# directly on the widget instance every time its state changes, sidestepping
+# the cascade entirely for just this one property. The plain (inactive)
+# look still comes from the normal global stylesheet -- only ever
+# overridden here when active, and cleared (falling back to the cascade)
+# otherwise.
+#
+# Theme-aware (User-Wunsch, 2026-09-16: "die Buttons an das jeweilige
+# Layout anpassen") -- same two accent colors each theme's own
+# #primaryButton/#tabButton[active="true"]/etc. gradient already uses in
+# styles.qss's per-theme blocks, duplicated here since inline
+# setStyleSheet() can't read back "what would the cascade have picked".
+_THEME_GRADIENT_COLORS = {
+    "abyss":      ("#06b6d4", "#a855f7"),
+    "inferno":    ("#fb923c", "#dc2626"),
+    "emerald":    ("#34d399", "#0d9488"),
+    "frostbite":  ("#93c5fd", "#2563eb"),
+    "obsidian":   ("#fcd34d", "#b45309"),
+    "void":       ("#e879f9", "#7c3aed"),
+}
+
+
+def _active_button_qss(kind: str, theme: str | None) -> str:
+    color_a, color_b = _THEME_GRADIENT_COLORS.get(theme, _THEME_GRADIENT_COLORS["abyss"])
+    if kind == "day":
+        extra = "border-radius: 6px; font-size: 12px; font-weight: 700;"
+    else:
+        extra = "border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: 600;"
+    return f"""
+        QPushButton {{
+            background: qlineargradient(
+                x1:0, y1:0, x2:1, y2:0,
+                stop:0 {color_a},
+                stop:1 {color_b}
+            );
+            color: white;
+            border: none;
+            {extra}
+        }}
+    """
+
+
+def _apply_active_button_style(btn, active: bool, kind: str):
+    """Central helper for the workaround above -- call this everywhere
+    #dayButton/#toggleButton's checked state changes, instead of relying
+    on the "active" property + QSS cascade alone. `kind` is "day" or
+    "toggle"; the actual gradient colors are resolved fresh from the
+    current theme (self.window()'s "theme" property, the same one
+    styles.qss's own QWidget[theme="..."] selectors key off) every call,
+    so a later theme switch doesn't need a separate refresh pass here --
+    the next state change (or _refresh_active_button_styles below) just
+    picks the new theme up naturally."""
+    btn.setProperty("active", active)
+    if active:
+        top = btn.window()
+        theme = top.property("theme") if top else None
+        btn.setStyleSheet(_active_button_qss(kind, theme))
+    else:
+        btn.setStyleSheet("")
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+
 
 class _ScreenAwareComboBox(QComboBox):
     """Works around a real Qt/Windows bug (User-reported, 2026-09-11: the
@@ -366,6 +436,12 @@ class SettingsPage(QWidget):
             self._update_toggle_text(btn, checked, self._cur_lang, self._cur_tr)
         else:
             btn.setText("On" if checked else "Off")
+        _apply_active_button_style(btn, checked, "toggle")
+
+    def _show_changelog_history(self):
+        from ui.update_dialog import ChangelogHistoryDialog
+        dialog = ChangelogHistoryDialog(self, language=self._cur_lang)
+        dialog.exec()
 
     def update_language(self, language: str, tr_func):
         self._cur_lang = language
@@ -451,6 +527,7 @@ class SettingsPage(QWidget):
         self.update_check_title.setText(tr_func(language, "check_updates"))
         self.update_check_desc.setText(tr_func(language, "check_updates_desc"))
         self.check_update_btn.setText(tr_func(language, "check_updates_btn"))
+        self.changelog_history_btn.setText(tr_func(language, "about_changelog_history"))
 
 
         self.log_title.setText(tr_func(language, "view_log_title"))
@@ -476,6 +553,13 @@ class SettingsPage(QWidget):
             self.season_reset_label.setText(tr_func(language, "season_reset_label"))
 
         # ===== ADVANCED TIMER =====
+
+        self._update_toggle_text(
+            self.season_enabled_btn,
+            self.season_enabled_btn.isChecked(),
+            language,
+            tr_func
+        )
 
         self._update_toggle_text(
             self.shugo_enabled_btn,
@@ -762,7 +846,7 @@ class SettingsPage(QWidget):
 
             btn.clicked.connect(
                 lambda checked=False, t=theme_key:
-                self.theme_changed.emit(t)
+                self._on_theme_button_clicked(t)
             )
 
             self.theme_button_group.addButton(btn)
@@ -786,6 +870,43 @@ class SettingsPage(QWidget):
 
         if theme:
             self.theme_changed.emit(theme)
+            self._refresh_active_button_styles()
+
+    def _on_theme_button_clicked(self, theme: str):
+        self.theme_changed.emit(theme)
+        self._refresh_active_button_styles()
+
+    def _refresh_active_button_styles(self):
+        """#dayButton/#toggleButton's "active" look is baked into an inline
+        stylesheet per-widget at the moment it's clicked (see
+        _apply_active_button_style's docstring for why) -- which means it
+        only ever reads the CURRENT theme at THAT moment, and never
+        refreshes again on its own. A plain theme switch (no button
+        re-clicked) would otherwise leave whichever day/toggle happens to
+        already be checked showing the PREVIOUS theme's colors forever,
+        exactly as reported (User, 2026-09-16: "Buttons auf dem Inferno
+        haben immernoch den gleichen Stil wie das abyss Stil"). Called
+        right after emitting theme_changed, since MainWindow's
+        apply_theme() (connected to that signal) runs synchronously first
+        and updates self.window()'s "theme" property before this runs."""
+        for btn in getattr(self, "weekly_day_buttons", []):
+            if btn.isChecked():
+                _apply_active_button_style(btn, True, "day")
+        for btn in (
+            getattr(self, "season_enabled_btn", None),
+            getattr(self, "shugo_enabled_btn", None),
+            getattr(self, "riss_enabled_btn", None),
+            getattr(self, "notif_sync_btn", None),
+            getattr(self, "notif_enabled_btn", None),
+            getattr(self, "notif_shugo_enabled_btn", None),
+            getattr(self, "notif_riss_enabled_btn", None),
+            getattr(self, "auto_save_btn", None),
+            getattr(self, "show_events_btn", None),
+            getattr(self, "dps_autostart_btn", None),
+            getattr(self, "tray_minimize_btn", None),
+        ):
+            if btn is not None and btn.isChecked():
+                _apply_active_button_style(btn, True, "toggle")
 
     def _create_timer_page(self):
         page = QWidget()
@@ -856,9 +977,11 @@ class SettingsPage(QWidget):
             btn.setProperty("day_key", day_key)
             btn.setCheckable(True)
             btn.setObjectName("dayButton")
+            btn.setAttribute(Qt.WA_StyledBackground, True)
             btn.setFixedSize(34, 28)
             if day_key == "Mo":
                 btn.setChecked(True)
+                _apply_active_button_style(btn, True, "day")
             self.weekly_day_group.addButton(btn)
             self.weekly_day_buttons.append(btn)
             day_layout.addWidget(btn)
@@ -900,6 +1023,18 @@ class SettingsPage(QWidget):
         season_layout.addStretch()
         season_layout.addWidget(self.season_reset_date)
         season_layout.addWidget(self.season_reset_time)
+
+        # On/Off toggle (User-Wunsch, 2026-09-17: "beim Season Timer noch
+        # ein 'On/Off' einrichten, similar zum Advanced Timer") -- same
+        # widget setup as shugo_enabled_btn/riss_enabled_btn below, just
+        # gating whether the Season countdown card/reset logic is active
+        # at all (independent of whether a date is even set).
+        self.season_enabled_btn = QPushButton("Off")
+        self.season_enabled_btn.setCheckable(True)
+        self.season_enabled_btn.setObjectName("toggleButton")
+        self.season_enabled_btn.setAttribute(Qt.WA_StyledBackground, True)
+        self.season_enabled_btn.setFixedWidth(70)
+        season_layout.addWidget(self.season_enabled_btn)
         layout.addWidget(season_row)
 
         # ── Advanced Timer ───────────────────────────────────────────────
@@ -936,6 +1071,7 @@ class SettingsPage(QWidget):
         self.shugo_enabled_btn = QPushButton("Off")
         self.shugo_enabled_btn.setCheckable(True)
         self.shugo_enabled_btn.setObjectName("toggleButton")
+        self.shugo_enabled_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.shugo_enabled_btn.setFixedWidth(70)
         self.shugo_minute_combo = QComboBox()
         self.shugo_minute_combo.setObjectName("settingsCombo")
@@ -978,6 +1114,7 @@ class SettingsPage(QWidget):
         self.riss_enabled_btn = QPushButton("Off")
         self.riss_enabled_btn.setCheckable(True)
         self.riss_enabled_btn.setObjectName("toggleButton")
+        self.riss_enabled_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.riss_enabled_btn.setFixedWidth(70)
         self.riss_anchor_combo = QComboBox()
         self.riss_anchor_combo.setObjectName("settingsCombo")
@@ -1016,6 +1153,9 @@ class SettingsPage(QWidget):
             btn.clicked.connect(self._emit_weekly_day_changed)
         self.weekly_reset_time.timeChanged.connect(self._emit_weekly_time_changed)
 
+        self.season_enabled_btn.toggled.connect(
+            lambda checked: self._set_toggle(self.season_enabled_btn, checked)
+        )
         self.shugo_enabled_btn.toggled.connect(
             lambda checked: self._set_toggle(self.shugo_enabled_btn, checked)
         )
@@ -1031,10 +1171,11 @@ class SettingsPage(QWidget):
 
 
     def _emit_weekly_day_changed(self):
+        for btn in self.weekly_day_buttons:
+            _apply_active_button_style(btn, btn.isChecked(), "day")
         checked_button = self.weekly_day_group.checkedButton()
         if checked_button:
             self.weekly_reset_day_changed.emit(checked_button.property("day_key"))
-
 
     def _emit_weekly_time_changed(self):
         value = self.weekly_reset_time.time().toString("HH:mm")
@@ -1057,6 +1198,7 @@ class SettingsPage(QWidget):
             "weekly_reset_day": self.weekly_day_group.checkedButton().property("day_key"),
             "weekly_reset_time": self.weekly_reset_time.time().toString("HH:mm"),
             "season_reset_datetime": self._get_season_reset_str(),
+            "season_enabled": self.season_enabled_btn.isChecked(),
             "shugo_enabled": self.shugo_enabled_btn.isChecked(),
             "shugo_start_minute": int(self.shugo_minute_combo.currentText()),
             "shugo_interval_text": self.shugo_interval_combo.currentData(),
@@ -1119,6 +1261,8 @@ class SettingsPage(QWidget):
         self.notif_sync_btn.setCheckable(True)
         self.notif_sync_btn.setChecked(True)
         self.notif_sync_btn.setObjectName("toggleButton")
+        self.notif_sync_btn.setAttribute(Qt.WA_StyledBackground, True)
+        _apply_active_button_style(self.notif_sync_btn, True, "toggle")
         self.notif_sync_btn.setFixedWidth(140)
 
         notif_header.addLayout(notif_text, 1)
@@ -1146,6 +1290,7 @@ class SettingsPage(QWidget):
         self.notif_enabled_btn = QPushButton("Off")
         self.notif_enabled_btn.setCheckable(True)
         self.notif_enabled_btn.setObjectName("toggleButton")
+        self.notif_enabled_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.notif_enabled_btn.setFixedWidth(70)
 
         sync_row_layout.addStretch()
@@ -1177,6 +1322,7 @@ class SettingsPage(QWidget):
         self.notif_shugo_enabled_btn = QPushButton("Off")
         self.notif_shugo_enabled_btn.setCheckable(True)
         self.notif_shugo_enabled_btn.setObjectName("toggleButton")
+        self.notif_shugo_enabled_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.notif_shugo_enabled_btn.setFixedWidth(70)
         nosync_shugo.addStretch()
         nosync_shugo.addWidget(self.notif_shugo_warn_label)
@@ -1200,6 +1346,7 @@ class SettingsPage(QWidget):
         self.notif_riss_enabled_btn = QPushButton("Off")
         self.notif_riss_enabled_btn.setCheckable(True)
         self.notif_riss_enabled_btn.setObjectName("toggleButton")
+        self.notif_riss_enabled_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.notif_riss_enabled_btn.setFixedWidth(70)
         nosync_riss.addStretch()
         nosync_riss.addWidget(self.notif_riss_warn_label)
@@ -1294,6 +1441,10 @@ class SettingsPage(QWidget):
             self.notif_sync_btn.setText(tr(lang, "notif_nosync") if tr else "Nicht-Synchron")
         self._notif_sync_row.setVisible(checked)
         self._notif_nosync_widget.setVisible(not checked)
+        # notif_sync_btn doesn't go through _set_toggle (it swaps text to
+        # "Synchron"/"Nicht-Synchron" instead of On/Off) -- same inline
+        # active-style override still needed for its #toggleButton background.
+        _apply_active_button_style(self.notif_sync_btn, checked, "toggle")
 
     def _populate_sound_combo(self):
         self.notif_sound_combo.clear()
@@ -1345,6 +1496,8 @@ class SettingsPage(QWidget):
         self.auto_save_btn.setCheckable(True)
         self.auto_save_btn.setChecked(True)
         self.auto_save_btn.setObjectName("toggleButton")
+        self.auto_save_btn.setAttribute(Qt.WA_StyledBackground, True)
+        _apply_active_button_style(self.auto_save_btn, True, "toggle")
         self.auto_save_btn.setFixedWidth(70)
 
         self.auto_save_btn.toggled.connect(
@@ -1375,6 +1528,8 @@ class SettingsPage(QWidget):
         self.show_events_btn.setCheckable(True)
         self.show_events_btn.setChecked(True)
         self.show_events_btn.setObjectName("toggleButton")
+        self.show_events_btn.setAttribute(Qt.WA_StyledBackground, True)
+        _apply_active_button_style(self.show_events_btn, True, "toggle")
         self.show_events_btn.setFixedWidth(70)
 
         self.show_events_btn.toggled.connect(
@@ -1397,11 +1552,17 @@ class SettingsPage(QWidget):
         self.update_check_desc.setObjectName("settingsDescription")
         update_text.addWidget(self.update_check_title)
         update_text.addWidget(self.update_check_desc)
+        self.changelog_history_btn = QPushButton()
+        self.changelog_history_btn.setObjectName("secondaryButton")
+        self.changelog_history_btn.setFixedWidth(110)
+        self.changelog_history_btn.clicked.connect(self._show_changelog_history)
+
         self.check_update_btn = QPushButton()
         self.check_update_btn.setObjectName("secondaryButton")
         self.check_update_btn.setFixedWidth(110)
         self.check_update_btn.clicked.connect(self.check_update_requested.emit)
         update_layout.addLayout(update_text, 1)
+        update_layout.addWidget(self.changelog_history_btn)
         update_layout.addWidget(self.check_update_btn)
 
         # ===== LOG ROW ===== (User-Wunsch, 2026-08-27: "einen allgemeinen
@@ -1447,6 +1608,7 @@ class SettingsPage(QWidget):
         self.dps_autostart_btn = QPushButton("Off")
         self.dps_autostart_btn.setCheckable(True)
         self.dps_autostart_btn.setObjectName("toggleButton")
+        self.dps_autostart_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.dps_autostart_btn.setFixedWidth(110)
         self.dps_autostart_btn.toggled.connect(
             lambda checked: self._set_toggle(self.dps_autostart_btn, checked)
@@ -1494,6 +1656,7 @@ class SettingsPage(QWidget):
         self.tray_minimize_btn.setCheckable(True)
         self.tray_minimize_btn.setChecked(False)
         self.tray_minimize_btn.setObjectName("toggleButton")
+        self.tray_minimize_btn.setAttribute(Qt.WA_StyledBackground, True)
         self.tray_minimize_btn.setFixedWidth(70)
         self.tray_minimize_btn.toggled.connect(
             lambda checked: self._set_toggle(self.tray_minimize_btn, checked)
@@ -1557,7 +1720,9 @@ class SettingsPage(QWidget):
         if hasattr(self, "weekly_day_buttons"):
             weekly_day = data.get("weekly_reset_day", "Mo")
             for btn in self.weekly_day_buttons:
-                btn.setChecked(btn.property("day_key") == weekly_day)
+                is_active = btn.property("day_key") == weekly_day
+                btn.setChecked(is_active)
+                _apply_active_button_style(btn, is_active, "day")
 
         if hasattr(self, "weekly_reset_time"):
             h, m = map(int, data.get("weekly_reset_time", "09:00").split(":"))
@@ -1581,6 +1746,11 @@ class SettingsPage(QWidget):
                     self.season_reset_time.blockSignals(False)
                 except ValueError:
                     pass
+
+        if hasattr(self, "season_enabled_btn"):
+            enabled = data.get("season_enabled", False)
+            self.season_enabled_btn.setChecked(enabled)
+            self._set_toggle(self.season_enabled_btn, enabled)
 
         # Advanced Timer
         if hasattr(self, "shugo_enabled_btn"):
@@ -1646,6 +1816,7 @@ class SettingsPage(QWidget):
             tr = self._cur_tr
             key = "notif_sync" if synced else "notif_nosync"
             self.notif_sync_btn.setText(tr(lang, key) if tr else ("Synchron" if synced else "Nicht-Synchron"))
+            _apply_active_button_style(self.notif_sync_btn, synced, "toggle")
             self._notif_sync_row.setVisible(synced)
             self._notif_nosync_widget.setVisible(not synced)
 

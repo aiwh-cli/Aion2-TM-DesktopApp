@@ -1,4 +1,20 @@
+# Version 2.0.6
+
+## ✨ New Features
+
+- **Settings: a new "Changelog" button next to "Check for Updates" shows the release notes for the last 3 versions at once** — click a version on the left to jump straight to it, or just scroll through everything in one continuous view. Hotfix releases are marked with a badge.
+- **ToDo: a new character filter next to "Filter by" shows only one character's tasks/shopping at a time** — same idea as the Overlay's own character filter.
+- **Settings: the Season timer now has its own On/Off toggle, matching the Advanced Timer's Shugo/Rift toggles** — previously it only ever showed once a date was set, with no way to turn it off independently.
+
+## 🐛 Bug Fixes
+
+- **Settings: the weekly-reset day buttons and the "On"/"Off" toggle buttons gave no visible feedback when clicked.** Selecting a day or toggling a setting always worked correctly underneath, but a Qt styling quirk silently dropped the highlight color specifically for these two buttons. Both now light up clearly and consistently, matching whichever color theme is active.
+
+---
+
 # Version 2.0.5
+
+**Hotfix**
 
 ## 🐛 Bug Fixes
 

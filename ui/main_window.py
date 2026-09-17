@@ -306,6 +306,13 @@ class MainWindow(QMainWindow):
         self.weekly_reset_day = "Mo"
         self.weekly_reset_time = "09:00"
         self.season_reset_datetime = ""
+        # On/Off gate for the Season timer (User-Wunsch, 2026-09-17: "beim
+        # Season Timer noch ein 'On/Off' einrichten, similar zum Advanced
+        # Timer") -- previously the Season countdown card/reset logic was
+        # only ever gated by whether a date was SET at all, with no way to
+        # turn it off independently, unlike Shugo/Riss's own explicit
+        # enabled flags.
+        self.season_enabled = False
         self.last_daily_reset_date = None
         self.last_weekly_reset_date = None
         self.missed_daily_activities = []
@@ -398,6 +405,11 @@ class MainWindow(QMainWindow):
         # User-Wunsch, way back: "einen kleinen Button 'Char' einfügen ...
         # wenn man 4 oder mehr chars hat, ist das schnell überflutet".
         self.overlay_char_filter: str = ""
+        # Same idea for the main ToDo list itself (User-Wunsch, 2026-09-16:
+        # "beim ToDo wär es nice wie im Overlay auch einen Char auswählen zu
+        # können") -- a separate filter, independent of the Overlay's own,
+        # since the two are viewed at different times for different reasons.
+        self.todo_char_filter: str = ""
 
         self.flow_map_window = FlowMapWindow(self, language=self.language, tr_func=tr)
         self.flow_map_window.map_switch_requested.connect(self._switch_flow_map)
@@ -1122,6 +1134,7 @@ class MainWindow(QMainWindow):
 
         self.tasks_page.sort_requested.connect(self.sort_current_list)
         self.tasks_page.filter_changed.connect(self.set_task_filter)
+        self.tasks_page.char_filter_changed.connect(self.set_task_char_filter)
         self.tasks_page.manual_reset_requested.connect(self._on_manual_reset)
         self.tasks_page.template_requested.connect(self._open_template_dialog)
         self.tasks_page.character_requested.connect(self._open_character_dialog)
@@ -1370,7 +1383,7 @@ class MainWindow(QMainWindow):
         self._weekly_countdown_text = weekly_text
         self.timers_page.set_weekly_countdown(weekly_text)
 
-        season_text = self._get_season_countdown_text()
+        season_text = self._get_season_countdown_text() if self.season_enabled else ""
         if season_text:
             self.timers_page.set_season_countdown(season_text)
             self.timers_page.set_season_visible(True)
@@ -1541,6 +1554,12 @@ class MainWindow(QMainWindow):
             tasks = [
                 task for task in tasks
                 if not getattr(task, "is_event", False)
+            ]
+
+        if self.todo_char_filter:
+            tasks = [
+                task for task in tasks
+                if getattr(task, "character", "") == self.todo_char_filter
             ]
 
         self.tasks_page.render_tasks(tasks)
@@ -2120,6 +2139,7 @@ class MainWindow(QMainWindow):
         self.weekly_reset_day = settings.get("weekly_reset_day", "Mo")
         self.weekly_reset_time = settings.get("weekly_reset_time", "09:00")
         self.season_reset_datetime = settings.get("season_reset_datetime", "")
+        self.season_enabled = settings.get("season_enabled", False)
 
         from datetime import date as _date
         _d = settings.get("last_daily_reset_date")
@@ -2154,6 +2174,7 @@ class MainWindow(QMainWindow):
 
         self.timers_page.set_shugo_visible(self.shugo_enabled)
         self.timers_page.set_riss_visible(self.riss_enabled)
+        self.timers_page.set_season_visible(bool(self.season_enabled and self._get_season_countdown_text()))
 
         self.timer_categories = settings.get("timer_categories", ["Custom Timer"]) or ["Custom Timer"]
         self.custom_timers = settings.get("custom_timers", [])[:8]
@@ -2167,6 +2188,8 @@ class MainWindow(QMainWindow):
         if isinstance(saved_overlay_sections, dict):
             self.overlay_visible_sections.update(saved_overlay_sections)
         self.overlay_char_filter = settings.get("overlay_char_filter", "")
+        self.todo_char_filter = settings.get("todo_char_filter", "")
+        self.tasks_page.set_char_filter_value(self.todo_char_filter)
 
         self.toggle_events()
 
@@ -2396,6 +2419,7 @@ class MainWindow(QMainWindow):
                 "weekly_reset_day": self.weekly_reset_day,
                 "weekly_reset_time": self.weekly_reset_time,
                 "season_reset_datetime": self.season_reset_datetime,
+                "season_enabled": self.season_enabled,
 
                 "show_events": self.show_events,
 
@@ -2430,6 +2454,7 @@ class MainWindow(QMainWindow):
                 "missed_daily_activities": self.missed_daily_activities,
                 "overlay_visible_sections": self.overlay_visible_sections,
                 "overlay_char_filter": self.overlay_char_filter,
+                "todo_char_filter": self.todo_char_filter,
             },
 
             "tasks": {
@@ -3797,6 +3822,11 @@ class MainWindow(QMainWindow):
             self.season_reset_datetime
         )
 
+        self.season_enabled = data.get(
+            "season_enabled",
+            self.season_enabled
+        )
+
         self.show_events = data.get(
             "show_events",
             self.show_events
@@ -3850,6 +3880,7 @@ class MainWindow(QMainWindow):
 
         self.timers_page.set_shugo_visible(self.shugo_enabled)
         self.timers_page.set_riss_visible(self.riss_enabled)
+        self.timers_page.set_season_visible(bool(self.season_enabled and self._get_season_countdown_text()))
 
         self.notification_enabled = data.get("notification_enabled", self.notification_enabled)
         self.notification_warn_minutes = data.get("notification_warn_minutes", self.notification_warn_minutes)
@@ -3890,6 +3921,7 @@ class MainWindow(QMainWindow):
             "weekly_reset_day": self.weekly_reset_day,
             "weekly_reset_time": self.weekly_reset_time,
             "season_reset_datetime": self.season_reset_datetime,
+            "season_enabled": self.season_enabled,
 
             "shugo_enabled": self.shugo_enabled,
             "shugo_start_minute": self.shugo_start_minute,
@@ -4012,6 +4044,11 @@ class MainWindow(QMainWindow):
         self.active_filter = filter_key
         self.refresh()
         self._update_task_reset_hint()
+
+    def set_task_char_filter(self, character: str):
+        self.todo_char_filter = character
+        self.save_profile(silent=True)
+        self.refresh()
 
     def run_update_check(self):
         self._checker = UpdateChecker()

@@ -577,6 +577,71 @@ QDialog {
     border: none;
 }
 
+/* User-reported, 2026-09-16: the weekly-reset day buttons and the
+   "On"/"Off" toggle buttons never had any dedicated QSS at all -- they
+   fell back to the plain default Qt look, which gives no clearly visible
+   difference between checked/unchecked against this app's dark theme.
+   Clicking them DID work correctly the whole time (verified headlessly),
+   it just never showed. Same shape/gradient-on-checked treatment as
+   #minuteToggleButton above for visual consistency. */
+#dayButton {
+    background-color: rgba(15, 23, 42, 0.85);
+    color: #cbd5e1;
+    border: 1px solid rgba(100, 116, 139, 0.6);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#dayButton:hover {
+    border: 1px solid rgba(34, 211, 238, 0.8);
+    color: white;
+}
+
+/* This rule alone was never reliably repainting through the app-wide
+   stylesheet cascade for these specific buttons (confirmed 2026-09-16:
+   an IDENTICAL rule applied directly via btn.setStyleSheet() on the
+   instance rendered correctly every time; the exact same rule reaching
+   the widget only through MainWindow's cascaded setStyleSheet() never
+   painted a background, border/color/font-weight notwithstanding) --
+   kept here as a fallback/reference, but _apply_day_button_active_style()
+   in Python now sets this directly on each button instance instead. */
+#dayButton[active="true"] {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #06b6d4,
+        stop:1 #a855f7
+    );
+    color: white;
+    border: none;
+    font-weight: 700;
+}
+
+#toggleButton {
+    background-color: rgba(15, 23, 42, 0.85);
+    color: #cbd5e1;
+    border: 1px solid rgba(100, 116, 139, 0.6);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#toggleButton:hover {
+    border: 1px solid rgba(34, 211, 238, 0.8);
+    color: white;
+}
+
+#toggleButton[active="true"] {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #06b6d4,
+        stop:1 #a855f7
+    );
+    color: white;
+    border: none;
+}
+
 #timerCard {
     background-color: rgba(30, 41, 59, 0.65);
     border: 1px solid rgba(100, 116, 139, 0.45);
@@ -847,6 +912,8 @@ QWidget[theme="inferno"] #tabButton[active="true"],
 QWidget[theme="inferno"] #topTabButton[active="true"],
 QWidget[theme="inferno"] #primaryButton,
 QWidget[theme="inferno"] #minuteToggleButton:checked,
+QWidget[theme="inferno"] #dayButton[active="true"],
+QWidget[theme="inferno"] #toggleButton[active="true"],
 QWidget[theme="inferno"] #settingsSidebarButton:checked,
 QWidget[theme="inferno"] #themeToggleButton:checked,
 QWidget[theme="inferno"] #sortButton:checked,
@@ -859,10 +926,13 @@ QWidget[theme="inferno"] #primaryButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f97316, stop:1 #b91c1c);
 }
 
+
 QWidget[theme="emerald"] #tabButton[active="true"],
 QWidget[theme="emerald"] #topTabButton[active="true"],
 QWidget[theme="emerald"] #primaryButton,
 QWidget[theme="emerald"] #minuteToggleButton:checked,
+QWidget[theme="emerald"] #dayButton[active="true"],
+QWidget[theme="emerald"] #toggleButton[active="true"],
 QWidget[theme="emerald"] #settingsSidebarButton:checked,
 QWidget[theme="emerald"] #themeToggleButton:checked,
 QWidget[theme="emerald"] #sortButton:checked,
@@ -875,10 +945,13 @@ QWidget[theme="emerald"] #primaryButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #0f766e);
 }
 
+
 QWidget[theme="frostbite"] #tabButton[active="true"],
 QWidget[theme="frostbite"] #topTabButton[active="true"],
 QWidget[theme="frostbite"] #primaryButton,
 QWidget[theme="frostbite"] #minuteToggleButton:checked,
+QWidget[theme="frostbite"] #dayButton[active="true"],
+QWidget[theme="frostbite"] #toggleButton[active="true"],
 QWidget[theme="frostbite"] #settingsSidebarButton:checked,
 QWidget[theme="frostbite"] #themeToggleButton:checked,
 QWidget[theme="frostbite"] #sortButton:checked,
@@ -891,10 +964,13 @@ QWidget[theme="frostbite"] #primaryButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #60a5fa, stop:1 #1d4ed8);
 }
 
+
 QWidget[theme="obsidian"] #tabButton[active="true"],
 QWidget[theme="obsidian"] #topTabButton[active="true"],
 QWidget[theme="obsidian"] #primaryButton,
 QWidget[theme="obsidian"] #minuteToggleButton:checked,
+QWidget[theme="obsidian"] #dayButton[active="true"],
+QWidget[theme="obsidian"] #toggleButton[active="true"],
 QWidget[theme="obsidian"] #settingsSidebarButton:checked,
 QWidget[theme="obsidian"] #themeToggleButton:checked,
 QWidget[theme="obsidian"] #sortButton:checked,
@@ -907,10 +983,13 @@ QWidget[theme="obsidian"] #primaryButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #fbbf24, stop:1 #92400e);
 }
 
+
 QWidget[theme="void"] #tabButton[active="true"],
 QWidget[theme="void"] #topTabButton[active="true"],
 QWidget[theme="void"] #primaryButton,
 QWidget[theme="void"] #minuteToggleButton:checked,
+QWidget[theme="void"] #dayButton[active="true"],
+QWidget[theme="void"] #toggleButton[active="true"],
 QWidget[theme="void"] #settingsSidebarButton:checked,
 QWidget[theme="void"] #themeToggleButton:checked,
 QWidget[theme="void"] #sortButton:checked,
@@ -922,6 +1001,7 @@ QWidget[theme="void"] #filterButton[active="true"] {
 QWidget[theme="void"] #primaryButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d946ef, stop:1 #6d28d9);
 }
+
 
 /* #scheduleToggleBtn:checked keeps its own subtler translucent-tint
    treatment (unlike the bold gradients above) -- just recolored to
@@ -2445,6 +2525,62 @@ QToolTip {
 
 #updateDialogSep {
     color: rgba(99, 102, 241, 0.2);
+}
+
+#changelogVersionBtn {
+    background-color: rgba(30, 41, 59, 0.35);
+    border: 1px solid rgba(100, 116, 139, 0.28);
+    border-radius: 9px;
+    color: #94a3b8;
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 8px 12px;
+    text-align: left;
+    min-width: 160px;
+}
+
+#changelogVersionBtn:hover {
+    background-color: rgba(30, 41, 59, 0.7);
+}
+
+#changelogVersionBtn:checked {
+    background-color: rgba(99, 102, 241, 0.14);
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #e2e8f0;
+}
+
+#changelogHotfixBadge {
+    background-color: rgba(239, 68, 68, 0.14);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    border-radius: 6px;
+    color: #fca5a5;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+}
+
+#changelogVersionBtnTitle {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+#changelogVersionBtnDate {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 10.5px;
+    font-weight: 500;
+}
+
+#changelogVersionHeader {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    font-size: 20px;
+    font-weight: 700;
 }
 
 /* ========== TASK PROGRESS BAR ========== */

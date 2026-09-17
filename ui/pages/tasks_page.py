@@ -1,10 +1,10 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QLineEdit, QScrollArea,
-    QComboBox, QCheckBox, QButtonGroup, QCompleter
+    QComboBox, QCheckBox, QButtonGroup, QCompleter, QMenu
 )
 from PySide6.QtCore import Signal, QRect, Qt, QRegularExpression
-from PySide6.QtGui import QIntValidator, QRegularExpressionValidator, QPainter, QColor, QLinearGradient, QBrush
+from PySide6.QtGui import QIntValidator, QRegularExpressionValidator, QPainter, QColor, QLinearGradient, QBrush, QActionGroup
 
 class TaskProgressBar(QFrame):
     def __init__(self):
@@ -140,6 +140,7 @@ class TasksPage(QWidget):
     standard_apply_requested = Signal(str)
     sort_requested = Signal(object)  # tab_key, sort_key
     filter_changed = Signal(str)
+    char_filter_changed = Signal(str)
     manual_reset_requested = Signal()
     template_requested = Signal()
     character_requested = Signal()
@@ -154,6 +155,8 @@ class TasksPage(QWidget):
         self.tr = tr_func
         self.active_tab = "tasks"
         self.active_filter = "all"
+        self.active_char_filter = ""
+        self._known_characters: list[str] = []
         self.active_sort = "priority"
         self.sort_direction = "desc"
         self._show_events = True
@@ -516,6 +519,18 @@ class TasksPage(QWidget):
         self.filter_season_btn.setObjectName("filterButton")
         self.filter_season_btn.clicked.connect(lambda: self.set_filter("season"))
 
+        # Character filter (User-Wunsch, 2026-09-16: "beim ToDo wär es nice
+        # wie im Overlay auch einen Char auswählen zu können, dass alle
+        # ToDos zu einem Char nur angezeigt werden ... rechts vom Filter by")
+        # -- same popover-menu pattern as OverlayWindow's own char filter
+        # (_show_char_popover/_on_char_filter_selected), a single-choice
+        # "selection filter" rather than another row of exclusive pill
+        # buttons, since the character list is open-ended/variable-length.
+        self.char_filter_btn = QPushButton()
+        self.char_filter_btn.setObjectName("filterButton")
+        self.char_filter_btn.clicked.connect(self._show_char_filter_popover)
+        self._update_char_filter_btn_label()
+
         self.active_sort = "priority"
         self.update_sort_buttons()
 
@@ -541,6 +556,8 @@ class TasksPage(QWidget):
         self.sort_row.addWidget(self.filter_daily_btn)
         self.sort_row.addWidget(self.filter_weekly_btn)
         self.sort_row.addWidget(self.filter_season_btn)
+        self.sort_row.addSpacing(8)
+        self.sort_row.addWidget(self.char_filter_btn)
 
         self.sort_row.addStretch()
 
@@ -786,6 +803,8 @@ class TasksPage(QWidget):
             self.tr(self.language, "filter_by_events")
         )
 
+        self._update_char_filter_btn_label()
+
         self.event_input.setText(
             self.tr(self.language, "filter_by_events")
         )
@@ -905,6 +924,80 @@ class TasksPage(QWidget):
     def update_characters(self, char_names: list[str]):
         current = self.char_input.currentData()
         self._rebuild_char_input(char_names, select_data=current)
+        self._known_characters = list(char_names)
+
+    def _update_char_filter_btn_label(self):
+        self.char_filter_btn.setText(
+            self.active_char_filter or self.tr(self.language, "todo_char_filter_btn")
+        )
+
+    def _show_char_filter_popover(self):
+        menu = QMenu(self)
+        # QMenu is a real top-level popup, not a normal cascading child --
+        # it does NOT reliably inherit MainWindow's setStyleSheet() the way
+        # a plain child widget would (User-reported, 2026-09-16, screenshot:
+        # rendered in the plain light native menu style instead of this
+        # app's dark theme, even though a global unscoped "QMenu {...}" rule
+        # already exists in styles.qss). Setting it explicitly here
+        # guarantees it regardless of that cascade gap -- same colors as
+        # that global rule.
+        # Same palette as OverlayWindow's own character-filter menu (this
+        # feature's own direct inspiration) instead of the plain square
+        # global QMenu colors (User-Wunsch, 2026-09-16: "den Stil von dem
+        # kantigen Dropdown anpassen") -- rounded corners, softer border,
+        # rounded item highlight on hover/selection to match the rest of
+        # this app's pill/rounded-card look instead of sharp edges.
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: rgba(14, 16, 24, 0.98);
+                color: #e5e7eb;
+                border: 1px solid rgba(100, 116, 139, 0.35);
+                border-radius: 10px;
+                padding: 6px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                border-radius: 6px;
+            }
+            QMenu::item:selected {
+                background-color: rgba(255, 255, 255, 0.08);
+            }
+            QMenu::separator {
+                height: 1px;
+                background: rgba(100, 116, 139, 0.35);
+                margin: 6px 8px;
+            }
+        """)
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+
+        all_action = menu.addAction(self.tr(self.language, "todo_char_filter_all"))
+        all_action.setCheckable(True)
+        all_action.setChecked(self.active_char_filter == "")
+        all_action.triggered.connect(lambda: self._on_char_filter_selected(""))
+        group.addAction(all_action)
+
+        for name in self._known_characters:
+            action = menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(name == self.active_char_filter)
+            action.triggered.connect(lambda _c=False, n=name: self._on_char_filter_selected(n))
+            group.addAction(action)
+
+        menu.exec(self.char_filter_btn.mapToGlobal(self.char_filter_btn.rect().bottomLeft()))
+
+    def _on_char_filter_selected(self, name: str):
+        self.set_char_filter_value(name)
+        self.char_filter_changed.emit(name)
+
+    def set_char_filter_value(self, name: str):
+        """Also called by MainWindow right after a profile loads, to push
+        the persisted filter back into this button without re-emitting
+        char_filter_changed (which would otherwise immediately re-trigger
+        MainWindow.set_task_char_filter and re-save the profile it just
+        finished loading)."""
+        self.active_char_filter = name
+        self._update_char_filter_btn_label()
 
     def _rebuild_char_input(self, char_names: list[str], select_data: str | None = None):
         """Always has a real, selectable "Unassigned" row (index 0) -- see
