@@ -315,6 +315,16 @@ class MainWindow(QMainWindow):
         self.season_enabled = False
         self.last_daily_reset_date = None
         self.last_weekly_reset_date = None
+        # Which season_reset_datetime value the Season reset has already
+        # fired for (User-Wunsch, 2026-09-17: "Season Einträge beim
+        # Shopping und den Tasks mit dem Season Reset verknüpfen") -- a
+        # plain value-equality marker rather than a date, since a season
+        # end is a one-off, manually-set datetime, not a recurring
+        # calendar boundary like Daily/Weekly. Comparing against the
+        # CURRENT season_reset_datetime string directly means setting a
+        # new date for the next season naturally allows the reset to fire
+        # again once that new date passes.
+        self.last_season_reset_datetime = None
         self.missed_daily_activities = []
         self._daily_countdown_text = "--:--:--"
         self._weekly_countdown_text = "--:--:--"
@@ -2146,6 +2156,7 @@ class MainWindow(QMainWindow):
         self.last_daily_reset_date = _date.fromisoformat(_d) if _d else None
         _w = settings.get("last_weekly_reset_date")
         self.last_weekly_reset_date = _date.fromisoformat(_w) if _w else None
+        self.last_season_reset_datetime = settings.get("last_season_reset_datetime")
         self.missed_daily_activities = settings.get("missed_daily_activities", [])
 
         self.show_events = settings.get("show_events", True)
@@ -2451,6 +2462,7 @@ class MainWindow(QMainWindow):
                     self.last_weekly_reset_date.isoformat()
                     if self.last_weekly_reset_date else None
                 ),
+                "last_season_reset_datetime": self.last_season_reset_datetime,
                 "missed_daily_activities": self.missed_daily_activities,
                 "overlay_visible_sections": self.overlay_visible_sections,
                 "overlay_char_filter": self.overlay_char_filter,
@@ -3556,6 +3568,8 @@ class MainWindow(QMainWindow):
                 self.last_daily_reset_date = date.today()
             elif filter_key == "weekly":
                 self.last_weekly_reset_date = date.today()
+            elif filter_key == "season":
+                self.last_season_reset_datetime = self.season_reset_datetime
         elif tab == "shopping":
             schedules = [filter_key] if filter_key in ("daily", "weekly", "season") else ["daily", "weekly", "season"]
             if "daily" in schedules:
@@ -3624,6 +3638,27 @@ class MainWindow(QMainWindow):
             self.refresh()
             self.save_profile(silent=True)
             self.last_weekly_reset_date = last_weekly_reset_date
+
+        # ===== SEASON RESET ===== (User-Wunsch, 2026-09-17: "Season
+        # Einträge beim Shopping und den Tasks mit dem Season Reset
+        # verknüpfen") -- a one-off manually-set target instead of a
+        # recurring schedule, so "already reset" is tracked by comparing
+        # against the exact season_reset_datetime value rather than a
+        # calendar date; setting a new date for the next season is exactly
+        # what makes this fire again once THAT date passes. Gated on
+        # season_enabled to match Shugo/Riss's own on/off toggles.
+        if self.season_enabled and self.season_reset_datetime:
+            try:
+                season_reset_dt = datetime.strptime(self.season_reset_datetime, "%Y-%m-%d %H:%M")
+            except ValueError:
+                season_reset_dt = None
+            if season_reset_dt and now >= season_reset_dt:
+                if self.last_season_reset_datetime != self.season_reset_datetime:
+                    self._reset_tasks_by_schedule(["season"])
+                    self._reset_shopping_by_schedule(["season"])
+                    self.refresh()
+                    self.save_profile(silent=True)
+                    self.last_season_reset_datetime = self.season_reset_datetime
 
     def handle_sidebar_page_changed(self, page_key: str):
         logger.debug("Sidebar clicked: %s", page_key)
@@ -4112,6 +4147,7 @@ class MainWindow(QMainWindow):
         data["profile_name"] = new_name
         data.setdefault("settings", {})["last_daily_reset_date"] = None
         data["settings"]["last_weekly_reset_date"] = None
+        data["settings"]["last_season_reset_datetime"] = None
 
         with open(dest_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)

@@ -1,3 +1,15 @@
+# Version 2.0.7
+
+## ✨ New Features
+
+- **Season-scheduled tasks and shopping entries now actually reset once the Season timer's end date passes**, the same way Daily/Weekly entries already did — previously "Season" was just a filter label with no automatic reset behind it.
+
+## 🐛 Bug Fixes
+
+- **Picking a template to add always showed "Daily" in the schedule row and kept whatever Priority was last selected, regardless of what the template actually had saved.** The Daily/Weekly/Season toggle and the Priority dropdown now both switch to match the selected template automatically.
+
+---
+
 # Version 2.0.6
 
 ## ✨ New Features

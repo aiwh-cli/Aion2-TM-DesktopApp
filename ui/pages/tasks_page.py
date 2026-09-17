@@ -348,6 +348,14 @@ class TasksPage(QWidget):
         template_completer.setFilterMode(Qt.MatchContains)
         template_completer.setCaseSensitivity(Qt.CaseInsensitive)
         self.template_combo.setCompleter(template_completer)
+        # User-Wunsch, 2026-09-17: "den Schedule anzeigen, der in den
+        # Templates hinterlegt ist. Aktuell steht bei jedem Template
+        # automatisch 'Daily'" -- the Daily/Weekly/Season toggle row below
+        # never reflected the SELECTED template's own stored schedule, it
+        # only ever kept whatever the user had last clicked (defaulting to
+        # Daily), so adding e.g. a Weekly-tagged template silently added it
+        # as Daily unless the user remembered to flip the toggle first.
+        self.template_combo.currentIndexChanged.connect(self._on_template_selected)
 
         # Hint shown when template list is empty
         self.no_templates_hint = QLabel(self.tr(self.language, "no_templates_hint"))
@@ -896,6 +904,29 @@ class TasksPage(QWidget):
         if self.schedule_season_btn.isChecked():
             return "season"
         return "daily"
+
+    def _on_template_selected(self, index: int):
+        """Syncs the Daily/Weekly/Season toggle row and the Priority
+        dropdown to whichever schedule/priority the just-picked template
+        actually carries, instead of leaving them on whatever was last
+        set (see the connection site's own comment for the full "always
+        showed Daily" bug this fixes, extended the same way for Priority
+        per user request)."""
+        tmpl = self.template_combo.currentData()
+        if tmpl is None:
+            return
+        schedule = tmpl.get("schedule", "daily")
+        if schedule == "weekly":
+            self.schedule_weekly_btn.setChecked(True)
+        elif schedule == "season":
+            self.schedule_season_btn.setChecked(True)
+        else:
+            self.schedule_daily_btn.setChecked(True)
+
+        priority = tmpl.get("priority", "middle")
+        prio_index = self.priority_input.findData(priority)
+        if prio_index >= 0:
+            self.priority_input.setCurrentIndex(prio_index)
 
     def get_selected_currency(self) -> str:
         if self.currency_abyss_btn.isChecked():
