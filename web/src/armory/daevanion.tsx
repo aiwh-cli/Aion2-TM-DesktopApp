@@ -9,6 +9,7 @@ import {
   validateBoard,
 } from "./model";
 import { useData, Loading, Select, NumberField } from "./shared";
+import { ClassIcon, nodeIcon } from "./icons";
 type Board = { id: string; name: string; classId: string };
 export default function Daevanion({
   state: s,
@@ -82,6 +83,7 @@ export default function Daevanion({
   return (
     <>
       <div className="toolbar">
+        <ClassIcon name={s.className} />
         <Select
           label="Class"
           value={s.className}
@@ -160,11 +162,18 @@ export default function Daevanion({
                     aria-label={`${n.name || "Start"}, row ${n.r}, column ${n.c}, ${active.includes(n.id) ? "active" : "inactive"}`}
                     onClick={() => choose(n)}
                   >
-                    {n.g === "start"
-                      ? "◆"
-                      : n.e.some((e) => e.t === "k")
-                        ? "✦"
-                        : n.cost}
+                    <img
+                      className="armory-node-art"
+                      src={nodeIcon(n.g, active.includes(n.id))}
+                      alt=""
+                    />
+                    <span className="armory-node-label">
+                      {n.g === "start"
+                        ? "◆"
+                        : n.e.some((e) => e.t === "k")
+                          ? "✦"
+                          : n.cost}
+                    </span>
                   </button>
                 ))}
             </div>

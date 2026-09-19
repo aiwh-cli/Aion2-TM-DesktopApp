@@ -11,9 +11,12 @@ import {
   classPools,
 } from "./model";
 import { useData, Loading, Select, NumberField } from "./shared";
+import { GameIcon, ClassIcon, assetIcon } from "./icons";
 type ArcanaItem = {
   id: number;
   name: string;
+  iconFile?: string;
+  image?: string;
   cardType: string;
   theme: string;
   grade: string;
@@ -47,6 +50,7 @@ export default function Arcana({
   return (
     <>
       <div className="toolbar">
+        <ClassIcon name={s.className} />
         <Select
           label="Class"
           value={s.className}
@@ -84,7 +88,18 @@ export default function Arcana({
           const spent = card.rolls.reduce((n, r) => n + r.level - 1, 0);
           return (
             <article className="panel" key={type}>
-              <h2>{type}</h2>
+              <div className="armory-identity">
+                <GameIcon
+                  src={
+                    assetIcon(`arcana_icons/${catalog?.iconFile}`) ||
+                    catalog?.image
+                  }
+                  label={catalog?.name || type}
+                  grade={card.grade}
+                  size="large"
+                />
+                <h2>{type}</h2>
+              </div>
               <Select
                 label={type + " theme"}
                 value={card.theme}
@@ -250,7 +265,17 @@ export default function Arcana({
             <tbody>
               {data.arcana.map((i) => (
                 <tr key={i.id}>
-                  <td>{i.name}</td>
+                  <td>
+                    <span className="armory-identity">
+                      <GameIcon
+                        src={assetIcon(`arcana_icons/${i.iconFile}`) || i.image}
+                        label={i.name}
+                        grade={i.grade}
+                        size="small"
+                      />
+                      {i.name}
+                    </span>
+                  </td>
                   <td>{i.theme}</td>
                   <td>{i.grade}</td>
                   <td>

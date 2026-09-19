@@ -96,6 +96,66 @@
 .armory-row strong {
   font-weight: 500;
 }
+.armory-row-copy {
+  flex: 1;
+  min-width: 0;
+}
+.armory-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+td .armory-identity,
+th .armory-identity {
+  margin-bottom: 0;
+}
+.armory-identity h2,
+.armory-identity h3 {
+  margin: 8px 0;
+}
+.game-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid #586657;
+  border-radius: 7px;
+  background: #111613;
+  color: #b6c5b0;
+}
+.game-icon-small {
+  width: 34px;
+  height: 34px;
+}
+.game-icon-large {
+  width: 76px;
+  height: 76px;
+}
+.game-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.game-icon[data-grade="epic"] {
+  border-color: #d39e69;
+  background: #3b291a;
+}
+.game-icon[data-grade="unique"] {
+  border-color: #d8bd60;
+  background: #352e19;
+}
+.game-icon[data-grade="legend"] {
+  border-color: #b488cd;
+  background: #30243c;
+}
+.game-icon[data-grade="rare"] {
+  border-color: #729bcc;
+  background: #1e2c3d;
+}
 .armory-row small {
   display: block;
   color: #a0aea4;
@@ -109,7 +169,7 @@
 }
 .armory-gear {
   display: grid;
-  grid-template-columns: minmax(100px, 1fr) 80px 85px;
+  grid-template-columns: 48px minmax(100px, 1fr) 80px 85px;
   gap: 10px;
   align-items: end;
   border-bottom: 1px solid #343e39;
@@ -201,10 +261,25 @@
   background-size: 36px 36px;
 }
 .armory .armory-node {
+  position: relative;
   min-height: 33px;
   padding: 0;
   font-size: 11px;
   border-radius: 5px;
+}
+.armory-node-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.armory-node-label {
+  position: relative;
+  z-index: 1;
+  text-shadow:
+    0 1px 3px #000,
+    0 0 4px #000;
 }
 .armory .armory-node.focused {
   outline: 2px solid #dfc894;
@@ -239,7 +314,7 @@
     flex-basis: 100%;
   }
   .armory-gear {
-    grid-template-columns: minmax(0, 1fr) 65px 65px;
+    grid-template-columns: 48px minmax(0, 1fr) 65px 65px;
   }
   .armory .toolbar {
     align-items: stretch;

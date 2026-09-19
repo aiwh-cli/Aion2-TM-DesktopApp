@@ -1,6 +1,7 @@
 export type Item = {
   id: number;
   name: string;
+  image?: string;
   grade: string;
   options: string[];
   categoryName: string;
@@ -19,6 +20,8 @@ export type Recipe = {
 export type Skill = {
   id: string;
   name: string;
+  icon?: string;
+  iconFile?: string;
   mainCategory: string;
   type: string;
   description: string;

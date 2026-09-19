@@ -14,6 +14,7 @@ import {
   validSpecs,
 } from "./model";
 import { useData, Loading, Select, NumberField, plain } from "./shared";
+import { SkillIcon, ClassIcon } from "./icons";
 export default function Skills({
   state: s,
   onChange: set,
@@ -80,6 +81,7 @@ export default function Skills({
         </p>
       )}
       <div className="toolbar">
+        <ClassIcon name={s.className} />
         <Select
           label="Class"
           value={s.className}
@@ -160,7 +162,10 @@ export default function Skills({
                     {k.favorites.includes(skill.id) ? "★" : "☆"}
                   </button>
                 </div>
-                <h3>{skill.name}</h3>
+                <div className="armory-identity">
+                  <SkillIcon skill={skill} />
+                  <h3>{skill.name}</h3>
+                </div>
                 <div className="toolbar">
                   <NumberField
                     label="Invested level"

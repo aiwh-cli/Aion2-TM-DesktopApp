@@ -10,6 +10,7 @@ import {
   equippedEntries,
 } from "./model";
 import { useData, Loading, Select, NumberField } from "./shared";
+import { ItemIcon, ClassIcon } from "./icons";
 type Wing = {
   id: string;
   name: string;
@@ -102,6 +103,7 @@ export default function Builds({
         </button>
       </div>
       <div className="panel toolbar">
+        <ClassIcon name={b.className} />
         <label className="field">
           Loadout name
           <input
@@ -164,6 +166,7 @@ export default function Builds({
             const item = data.items.find((i) => i.id === g?.id);
             return (
               <div className="armory-gear" key={slot}>
+                <ItemIcon item={item} slot={slot} />
                 <Select
                   label={slot}
                   value={String(g?.id || "")}

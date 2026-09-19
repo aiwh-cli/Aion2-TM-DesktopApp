@@ -1,6 +1,7 @@
 import type { ArmoryState } from "./state";
-import { craft, type Recipe } from "./model";
+import { craft, type Recipe, type Item } from "./model";
 import { useData, Loading, Select, NumberField } from "./shared";
+import { ItemIcon } from "./icons";
 export type Shopping = {
   title: string;
   amount: number;
@@ -17,7 +18,9 @@ export default function Crafting({
   onAddShopping: (items: Shopping[]) => void;
 }) {
   const { data, error } = useData<{ recipes: Recipe[] }>("recipes_all");
+  const catalog = useData<{ items: Item[] }>("items_all");
   if (!data) return <Loading error={error} />;
+  const items = new Map(catalog.data?.items.map((item) => [item.id, item]));
   const c = s.craft,
     update = (patch: Partial<typeof c>) =>
       set({ ...s, craft: { ...c, ...patch } });
@@ -72,7 +75,8 @@ export default function Crafting({
               key={r.id}
               onClick={() => update({ recipe: r.id })}
             >
-              <span>
+              <ItemIcon item={items.get(r.outputs[0].id)} />
+              <span className="armory-row-copy">
                 <strong>{r.outputs.map((o) => o.name).join(", ")}</strong>
                 <small>
                   {r.mainCategory} ·{" "}
@@ -89,7 +93,10 @@ export default function Crafting({
         <div className="panel">
           {recipe && result ? (
             <>
-              <h2>{recipe.outputs[0].name}</h2>
+              <div className="armory-identity">
+                <ItemIcon item={items.get(recipe.outputs[0].id)} size="large" />
+                <h2>{recipe.outputs[0].name}</h2>
+              </div>
               <Select
                 label="Recipe variant (direct / transfer)"
                 value={String(recipe.id)}
@@ -119,7 +126,12 @@ export default function Crafting({
                   <tbody>
                     {result.materials.map((m) => (
                       <tr key={m.id}>
-                        <td>{m.name}</td>
+                        <td>
+                          <span className="armory-identity">
+                            <ItemIcon item={items.get(m.id)} size="small" />
+                            {m.name}
+                          </span>
+                        </td>
                         <td>{m.qty.toLocaleString()}</td>
                         <td>
                           <input

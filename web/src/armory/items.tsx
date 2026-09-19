@@ -2,6 +2,7 @@ import type { ArmoryState } from "./state";
 import type { Item } from "./model";
 import { classes, stats, classMatches } from "./model";
 import { useData, Select, Loading } from "./shared";
+import { ItemIcon, ClassIcon } from "./icons";
 export default function Items({
   state: s,
   onChange: set,
@@ -27,6 +28,7 @@ export default function Items({
   return (
     <>
       <div className="toolbar">
+        <ClassIcon name={s.className} />
         <label className="field">
           Search items
           <input
@@ -75,7 +77,8 @@ export default function Items({
                 }
                 onClick={() => set({ ...s, selected: i.id })}
               >
-                <span>
+                <ItemIcon item={i} />
+                <span className="armory-row-copy">
                   <strong>{i.name}</strong>
                   <small>
                     {i.categoryName} · {i.grade}
@@ -107,8 +110,13 @@ export default function Items({
         <article className="panel">
           {selected ? (
             <>
-              <span className="badge">{selected.grade}</span>
-              <h2>{selected.name}</h2>
+              <div className="armory-identity">
+                <ItemIcon item={selected} size="large" />
+                <div>
+                  <span className="badge">{selected.grade}</span>
+                  <h2>{selected.name}</h2>
+                </div>
+              </div>
               <p>
                 {selected.categoryName} ·{" "}
                 {selected.classNames.join(", ") || "All classes"} ·{" "}
@@ -154,7 +162,12 @@ export default function Items({
               <tr>
                 <th>Property (range midpoint)</th>
                 {compared.map((i) => (
-                  <th key={i.id}>{i.name}</th>
+                  <th key={i.id}>
+                    <span className="armory-identity">
+                      <ItemIcon item={i} size="small" />
+                      {i.name}
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
