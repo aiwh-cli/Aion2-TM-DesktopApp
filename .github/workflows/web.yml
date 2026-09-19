@@ -1,7 +1,7 @@
 name: Browser checks
 on:
   push:
-    branches: [web-version]
+    branches: [main, web-version]
     paths: ['web/**', 'scripts/browser-smoke.mjs', 'package*.json', 'vite.config.ts', 'tsconfig.json', 'vercel.json', '.npmrc', '.github/workflows/web.yml']
   pull_request:
     paths: ['web/**', 'scripts/browser-smoke.mjs', 'package*.json', 'vite.config.ts', 'tsconfig.json', 'vercel.json', '.npmrc', '.github/workflows/web.yml']

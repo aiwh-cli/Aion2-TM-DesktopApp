@@ -355,7 +355,7 @@ export default function Settings({
           </a>
           <a
             className="button secondary"
-            href="https://github.com/aiwh-cli/Aion2-TM-DesktopApp/tree/web-version"
+            href="https://github.com/aiwh-cli/Aion2-TM-DesktopApp"
             target="_blank"
             rel="noreferrer"
           >

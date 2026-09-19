@@ -1,6 +1,8 @@
 # Aion 2 Companion — browser edition
 
-This fork includes a desktop-browser adaptation in `web/`. The original Python/Qt desktop application is preserved below and in the original source folders. Browser development and Vercel deployment use the `web-version` branch.
+This fork includes a desktop-browser adaptation in `web/`. The original Python/Qt desktop application is preserved below and in the original source folders. The live website deploys from `main`. The `web-version` branch records the initial browser conversion.
+
+**[Open the website](https://aion2-tm-online.vercel.app)** · [Vercel project](https://vercel.com/branson-1459s-projects/aion2-tm-online)
 
 ## Run the website
 
