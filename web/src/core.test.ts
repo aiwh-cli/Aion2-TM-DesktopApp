@@ -6,6 +6,7 @@ import {
   applyResets,
   resetBoundary,
   timerRemaining,
+  nextRecurring,
   csvImport,
   csvExport,
   normalizeEntry,
@@ -128,5 +129,64 @@ describe("data tools", () => {
     });
     expect(canConnect(p.flow_maps.map.nodes, "c", "a")).toBe(false);
     expect(canConnect(p.flow_maps.map.nodes, "a", "c")).toBe(true);
+  });
+});
+
+describe("fixed recurring timer anchors", () => {
+  it("counts a 48-hour interval down across two midnight boundaries", () => {
+    const anchor = +new Date("2026-09-19T00:00:00Z");
+    const timer = normalizeTimer({
+      timer_mode: "custom",
+      anchor_at: anchor,
+      interval_seconds: 172800,
+    });
+    expect(timerRemaining(timer, new Date("2026-09-19T12:00:00Z"))).toBe(
+      36 * 3600,
+    );
+    expect(timerRemaining(timer, new Date("2026-09-20T00:00:00Z"))).toBe(
+      24 * 3600,
+    );
+    expect(timerRemaining(timer, new Date("2026-09-20T23:59:59Z"))).toBe(1);
+    expect(timerRemaining(timer, new Date("2026-09-21T00:00:00Z"))).toBe(
+      48 * 3600,
+    );
+  });
+  it("keeps a seven-hour occurrence stable across midnight", () => {
+    const anchor = +new Date("2026-09-19T00:00:00Z"),
+      interval = 7 * 3600000;
+    const expected = +new Date("2026-09-20T04:00:00Z");
+    expect(
+      nextRecurring(new Date("2026-09-19T23:59:59Z"), anchor, interval),
+    ).toBe(expected);
+    expect(
+      nextRecurring(new Date("2026-09-20T00:00:00Z"), anchor, interval),
+    ).toBe(expected);
+  });
+  it("uses a future first occurrence and advances at the exact boundary", () => {
+    const anchor = +new Date("2026-10-01T09:00:00Z");
+    expect(
+      nextRecurring(new Date("2026-09-30T09:00:00Z"), anchor, 3600000),
+    ).toBe(anchor);
+    expect(nextRecurring(new Date(anchor), anchor, 3600000)).toBe(
+      anchor + 3600000,
+    );
+  });
+  it("persists the migrated desktop anchor through repeated JSON imports", () => {
+    const timer = normalizeTimer({
+      timer_mode: "hourly",
+      start_time: "16:15",
+      desktop_option: "preserved",
+    });
+    expect(Number.isFinite(timer.anchor_at)).toBe(true);
+    const loaded = normalizeTimer(JSON.parse(JSON.stringify(timer)));
+    expect(loaded.anchor_at).toBe(timer.anchor_at);
+    expect(loaded.desktop_option).toBe("preserved");
+    const future = normalizeTimer({
+      ...loaded,
+      anchor_at: +new Date("2027-01-01T12:00:00Z"),
+    });
+    expect(normalizeTimer(JSON.parse(JSON.stringify(future))).anchor_at).toBe(
+      future.anchor_at,
+    );
   });
 });

@@ -19,6 +19,7 @@ import {
   timerRemaining,
   countdown,
   DAYS,
+  localDateTime,
 } from "../core";
 import Modal from "./Modal";
 export function useNow() {
@@ -323,10 +324,21 @@ function TimerEditor({
 }) {
   const [t, set] = useState(timer);
   const patch = (p: Partial<Timer>) => set({ ...t, ...p });
-  const submit = (e: FormEvent) => {
+  const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const firstOccurrence = new FormData(e.currentTarget).get("anchor_at");
+    const anchor =
+      typeof firstOccurrence === "string"
+        ? +new Date(firstOccurrence)
+        : t.anchor_at;
+    if (!Number.isFinite(anchor)) return;
     onSave({
       ...t,
+      anchor_at: anchor,
+      start_time:
+        typeof firstOccurrence === "string"
+          ? firstOccurrence.slice(11, 16)
+          : t.start_time,
       name: t.name.trim(),
       remaining: t.countdown_duration_seconds,
       end: null,
@@ -433,12 +445,12 @@ function TimerEditor({
                 />
               </label>
               <label className="field">
-                Anchor time
+                First occurrence (local time)
                 <input
                   required
-                  type="time"
-                  value={t.start_time}
-                  onChange={(e) => patch({ start_time: e.target.value })}
+                  type="datetime-local"
+                  name="anchor_at"
+                  defaultValue={localDateTime(t.anchor_at)}
                 />
               </label>
             </>

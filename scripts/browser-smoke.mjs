@@ -93,11 +93,13 @@ try {
   await page.getByRole("button", { name: "Create map", exact: true }).click();
   await page.getByRole("button", { name: "Add step", exact: true }).click();
   await page.getByLabel("Step title", { exact: true }).fill("QA first step");
-  await page.getByLabel("Status", { exact: true }).selectOption("active");
+  await page
+    .getByRole("combobox", { name: "Status", exact: true })
+    .selectOption("active");
   await page.getByRole("button", { name: "Add step", exact: true }).click();
   await page.getByLabel("Step title", { exact: true }).fill("QA second step");
   await page
-    .getByLabel("Connect to next step", { exact: true })
+    .getByRole("combobox", { name: "Connect to next step", exact: true })
     .selectOption({ label: "QA first step" });
   await page.getByRole("button", { name: "Connect step", exact: true }).click();
   await expect(
@@ -151,7 +153,7 @@ try {
   await checkpoint("craft recursive materials and shopping integration");
   await nav("Build planner");
   await page.getByLabel("Loadout name", { exact: true }).fill("QA build");
-  const weapons = page.getByLabel("Weapon", { exact: true });
+  const weapons = page.getByRole("combobox", { name: "Weapon", exact: true });
   await expect(weapons.locator("option")).not.toHaveCount(1);
   const weaponId = await weapons.locator("option").nth(1).getAttribute("value");
   await weapons.selectOption(weaponId);
@@ -188,7 +190,9 @@ try {
   await expect(
     page.getByRole("heading", { name: "Chalice", exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Chalice theme", { exact: true }).selectOption("Magic");
+  await page
+    .getByRole("combobox", { name: "Chalice theme", exact: true })
+    .selectOption("Magic");
   await page
     .getByRole("button", { name: "Calculate best-case cards", exact: true })
     .click();
@@ -212,13 +216,11 @@ try {
   ).toBe(true);
   expect(data.web_armory.builds[0].name).toBe("QA build");
   expect(data.flow_maps["QA map"]).toBeTruthy();
-  await page
-    .locator("input[type=file]")
-    .setInputFiles({
-      name: "qa-backup.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(exported),
-    });
+  await page.locator("input[type=file]").setInputFiles({
+    name: "qa-backup.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(exported),
+  });
   await expect(page.getByRole("status")).toContainText("Imported 1 profile");
   await expect(
     page.getByLabel("Current profile").locator("option"),

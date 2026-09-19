@@ -21,6 +21,7 @@ export interface Timer {
   reset_time: string;
   reset_day: string;
   start_time: string;
+  anchor_at: number;
   interval_minutes: number;
   interval_seconds: number;
   countdown_duration_seconds: number;
@@ -138,6 +139,11 @@ export function normalizeEntry(value: unknown): Entry {
 export function normalizeTimer(value: unknown): Timer {
   const x = record(value),
     duration = Math.max(1, num(x.countdown_duration_seconds, 600));
+  // Desktop timers have only a wall-clock start. Establish the first local
+  // date at import, then persist it so later reloads never move the anchor.
+  const importedAnchor = new Date();
+  const [hour, minute] = time(x.start_time, "00:00").split(":").map(Number);
+  importedAnchor.setHours(hour, minute, 0, 0);
   return {
     ...x,
     id: str(x.id) || uid(),
@@ -150,6 +156,12 @@ export function normalizeTimer(value: unknown): Timer {
     reset_time: time(x.reset_time),
     reset_day: DAYS[dayAliases[str(x.reset_day)] ?? 1],
     start_time: time(x.start_time, "00:00"),
+    anchor_at:
+      typeof x.anchor_at === "number" &&
+      Number.isFinite(x.anchor_at) &&
+      Math.abs(x.anchor_at) <= 8.64e15
+        ? x.anchor_at
+        : +importedAnchor,
     interval_minutes: Math.max(1, num(x.interval_minutes, 60)),
     interval_seconds: Math.max(1, num(x.interval_seconds, 3600)),
     countdown_duration_seconds: duration,
@@ -335,6 +347,19 @@ export function nextInterval(
     delta = +now - anchor;
   return anchor + (Math.floor(delta / interval) + 1) * interval;
 }
+export function nextRecurring(
+  now: Date,
+  anchor: number,
+  interval: number,
+): number {
+  if (+now < anchor) return anchor;
+  return anchor + (Math.floor((+now - anchor) / interval) + 1) * interval;
+}
+export function localDateTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 export function timerRemaining(timer: Timer, now: Date): number {
   if (timer.timer_mode === "countdown")
     return Math.max(
@@ -353,9 +378,9 @@ export function timerRemaining(timer: Timer, now: Date): number {
       1000
     );
   return (
-    (nextInterval(
+    (nextRecurring(
       now,
-      timer.start_time,
+      timer.anchor_at,
       (timer.timer_mode === "hourly"
         ? timer.interval_minutes * 60
         : timer.interval_seconds) * 1000,
