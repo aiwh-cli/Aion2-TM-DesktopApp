@@ -1,4 +1,4 @@
-import { type Card, classes } from "./model";
+import { type Card, slots, cardTypes, displayClass } from "./model";
 export type Build = {
   id: string;
   name: string;
@@ -137,6 +137,7 @@ export function normalizeArmoryState(value: unknown): ArmoryState {
         const q = obj(x),
           gear: Build["gear"] = {};
         for (const [k, y] of Object.entries(obj(q.gear))) {
+          if (!Object.hasOwn(slots, k)) continue;
           const z = obj(y);
           gear[k] = {
             id: num(z.id),
@@ -148,9 +149,7 @@ export function normalizeArmoryState(value: unknown): ArmoryState {
           ...freshBuild(),
           id: str(q.id) || freshBuild().id,
           name: str(q.name, "Loadout"),
-          className: classes.includes(str(q.className))
-            ? str(q.className)
-            : "Gladiator",
+          className: displayClass(str(q.className)),
           race: q.race === "dark" ? "dark" : "light",
           gear,
           wing: str(q.wing),
@@ -161,17 +160,16 @@ export function normalizeArmoryState(value: unknown): ArmoryState {
     : d.builds;
   const cards: Record<string, Card> = {};
   for (const [k, x] of Object.entries(obj(a.cards))) {
+    if (!cardTypes.includes(k)) continue;
     const q = obj(x);
     cards[k] = {
       theme: str(q.theme, "Vigor"),
       grade: str(q.grade, "Unique"),
       rolls: Array.isArray(q.rolls)
-        ? q.rolls
-            .slice(0, 4)
-            .map((y) => ({
-              id: str(obj(y).id),
-              level: num(obj(y).level, 1, 4),
-            }))
+        ? q.rolls.slice(0, 4).map((y) => ({
+            id: str(obj(y).id),
+            level: num(obj(y).level, 1, 4),
+          }))
         : [],
     };
   }
@@ -179,9 +177,7 @@ export function normalizeArmoryState(value: unknown): ArmoryState {
     ...d,
     query: str(v.query),
     category: str(v.category),
-    className: classes.includes(str(v.className))
-      ? str(v.className)
-      : d.className,
+    className: displayClass(str(v.className)),
     grade: str(v.grade),
     mode: str(v.mode),
     selected: num(v.selected),

@@ -67,6 +67,7 @@ export const slots: Record<string, string[]> = {
     "Mace",
     "Staff",
     "Fist",
+    "Gauntlet",
   ],
   Guard: ["Guard"],
   Helm: ["Helm"],
@@ -91,8 +92,7 @@ export const slots: Record<string, string[]> = {
 export function fits(item: Item, slot: string, cls: string, race = "light") {
   return (
     !!slots[slot]?.includes(item.categoryName) &&
-    (!item.classNames?.length ||
-      item.classNames.some((c) => c.toLowerCase() === cls.toLowerCase())) &&
+    classMatches(item, cls) &&
     !(race === "light"
       ? item.name.includes("Archon")
       : item.name.includes("Guardian"))
@@ -392,4 +392,137 @@ export function stats(items: Item[]) {
       }
     }
   return result;
+}
+
+/** Catalog and skill data use different names for the same playable classes. */
+export function classId(value: string) {
+  const id = value.toLowerCase();
+  return (
+    (
+      { spiritmaster: "elementalist", brawler: "fighter" } as Record<
+        string,
+        string
+      >
+    )[id] || id
+  );
+}
+export function classMatches(item: Item, cls: string) {
+  return (
+    !item.classNames?.length ||
+    item.classNames.some((c) => classId(c) === classId(cls))
+  );
+}
+export function normalizeNodes(nodes: Node[]): Node[] {
+  return nodes.map((n) => ({
+    ...n,
+    id: String(n.id),
+    b: String(n.b),
+    e: n.e.map((e) => ({
+      ...e,
+      ...(e.skill_id != null ? { skill_id: String(e.skill_id) } : {}),
+    })),
+  }));
+}
+export type ArcanaPools = Record<
+  string,
+  Record<string, Record<string, Roll[]>>
+>;
+export function classPools(raw: ArcanaPools, cls: string) {
+  return Object.fromEntries(
+    cardTypes.map((type) => {
+      const unique = new Map<string, Roll>();
+      for (const group of Object.values(raw[type] || {}))
+        for (const [key, pool] of Object.entries(group))
+          if (classId(key) === classId(cls))
+            for (const skill of pool) unique.set(skill.id, skill);
+      return [type, eligible(type, [...unique.values()])];
+    }),
+  );
+}
+export function arcanaBonuses(
+  cards: Record<string, Card>,
+  pools: Record<string, Roll[]>,
+) {
+  const totals: Record<string, number> = {};
+  const invalid: string[] = [];
+  for (const [type, card] of Object.entries(cards)) {
+    if (!cardTypes.includes(type) || !validCard(card, pools[type] || [])) {
+      invalid.push(type);
+      continue;
+    }
+    for (const roll of card.rolls)
+      totals[roll.id] = (totals[roll.id] || 0) + roll.level;
+  }
+  return { totals, invalid };
+}
+export function equippedEntries(
+  gear: Record<string, { id: number; level: number; cap: number }>,
+  items: Item[],
+  cls: string,
+  race: string,
+) {
+  return Object.entries(gear).flatMap(([slot, g]) => {
+    const item = items.find((i) => i.id === g.id);
+    return item &&
+      Object.hasOwn(slots, slot) &&
+      fits(item, slot, cls, race) &&
+      Number.isInteger(g.level) &&
+      Number.isInteger(g.cap) &&
+      g.cap >= 1 &&
+      g.cap <= 20 &&
+      g.level >= 0 &&
+      g.level <= g.cap + 5
+      ? [{ slot, ...g, item }]
+      : [];
+  });
+}
+/** Preserve invalid saved choices for editing, but never apply their effects. */
+export function validateBoard(
+  nodes: Node[],
+  selected: string[],
+  level: number,
+  budget: number,
+) {
+  const eligibleNodes = nodes.filter((n) => n.lvl <= level);
+  const reachable = connected(eligibleNodes, selected);
+  const invalid = selected.filter((id) => !reachable.includes(id));
+  const cost = nodes
+    .filter((n) => selected.includes(n.id))
+    .reduce((n, x) => n + x.cost, 0);
+  const overBudget = cost > budget;
+  return { active: overBudget ? [] : reachable, cost, invalid, overBudget };
+}
+export function boardSkillBonuses(
+  nodes: Node[],
+  selected: string[],
+  level: number,
+  budget: number,
+) {
+  const validation = validateBoard(nodes, selected, level, budget);
+  const totals: Record<string, number> = {};
+  for (const node of nodes)
+    if (validation.active.includes(node.id))
+      for (const e of node.e)
+        if (e.t === "k" && e.skill_id != null) {
+          const id = String(e.skill_id);
+          totals[id] = (totals[id] || 0) + e.v;
+        }
+  return { totals, ...validation };
+}
+export function validSpecs(
+  skill: Skill,
+  selected: number[],
+  effective: number,
+) {
+  return [...new Set(selected)]
+    .filter((id) =>
+      skill.specializations.some(
+        (s) => s.id === id && s.parentSkillLvl <= effective,
+      ),
+    )
+    .slice(0, specCap(effective));
+}
+
+export function displayClass(value: string) {
+  return classes.find((c) => classId(c) === classId(value)) || "Gladiator";
 }

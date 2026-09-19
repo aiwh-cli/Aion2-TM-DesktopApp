@@ -5,10 +5,10 @@ import {
   type Card,
   cardTypes,
   budgets,
-  eligible,
   validCard,
   bestCards,
   classes,
+  classPools,
 } from "./model";
 import { useData, Loading, Select, NumberField } from "./shared";
 type ArcanaItem = {
@@ -33,15 +33,8 @@ export default function Arcana({
     raw = useData<Pools>("arcana_class_skills");
   const [result, setResult] = useState<ReturnType<typeof bestCards>>();
   if (!data || !raw.data) return <Loading error={error || raw.error} />;
-  const a = s.arcana,
-    cls = s.className.toLowerCase();
-  const pools: Record<string, Roll[]> = {};
-  for (const t of cardTypes) {
-    const unique = new Map<string, Roll>();
-    for (const group of Object.values(raw.data[t] || {}))
-      for (const skill of group[cls] || []) unique.set(skill.id, skill);
-    pools[t] = eligible(t, [...unique.values()]);
-  }
+  const a = s.arcana;
+  const pools = classPools(raw.data, s.className);
   const all = [
     ...new Map(
       Object.values(pools)

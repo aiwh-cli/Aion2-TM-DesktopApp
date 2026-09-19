@@ -1,6 +1,14 @@
 import type { ArmoryState, Build } from "./state";
 import { freshBuild } from "./state";
-import { type Item, slots, fits, classes, stats, enchant } from "./model";
+import {
+  type Item,
+  slots,
+  fits,
+  classes,
+  stats,
+  enchant,
+  equippedEntries,
+} from "./model";
 import { useData, Loading, Select, NumberField } from "./shared";
 type Wing = {
   id: string;
@@ -27,17 +35,16 @@ export default function Builds({
       builds: s.builds.map((x) => (x.id === b.id ? { ...b, ...patch } : x)),
     });
   const totals = (build: Build) => {
-    const value = stats(
-      Object.values(build.gear)
-        .map((g) => data.items.find((i) => i.id === g.id))
-        .filter((i): i is Item => !!i),
+    const entries = equippedEntries(
+      build.gear,
+      data.items,
+      build.className,
+      build.race,
     );
-    for (const g of Object.values(build.gear)) {
-      const item = data.items.find((i) => i.id === g.id);
-      if (item)
-        for (const [k, v] of Object.entries(enchant(item, g.level, g.cap)))
-          value[k] = (value[k] || 0) + (v || 0);
-    }
+    const value = stats(entries.map((g) => g.item));
+    for (const g of entries)
+      for (const [k, v] of Object.entries(enchant(g.item, g.level, g.cap)))
+        value[k] = (value[k] || 0) + v;
     return value;
   };
   const total = totals(b),
@@ -46,6 +53,14 @@ export default function Builds({
   const wing = w.data?.find((x) => x.id === b.wing);
   return (
     <>
+      {equippedEntries(b.gear, data.items, b.className, b.race).length !==
+        Object.keys(b.gear).length && (
+        <p role="alert">
+          Some saved equipment is invalid for its slot, class, race or enchant
+          limits. Invalid entries are excluded from totals. Clear or replace
+          those slots.
+        </p>
+      )}
       <div className="toolbar">
         <Select
           label="Saved loadout"

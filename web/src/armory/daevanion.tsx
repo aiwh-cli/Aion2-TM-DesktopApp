@@ -1,6 +1,13 @@
 import { useState } from "react";
 import type { ArmoryState } from "./state";
-import { type Node, type Skill, classes, route, connected } from "./model";
+import {
+  type Node,
+  type Skill,
+  classes,
+  route,
+  connected,
+  validateBoard,
+} from "./model";
 import { useData, Loading, Select, NumberField } from "./shared";
 type Board = { id: string; name: string; classId: string };
 export default function Daevanion({
@@ -23,10 +30,9 @@ export default function Daevanion({
     board = boards.find((x) => x.id === b.board) || boards[0];
   const nodes = data.nodes.filter((n) => n.b === board?.id);
   const key = b.dataset + ":" + board?.id;
-  const active = connected(nodes, b.selected[key] || []),
-    cost = nodes
-      .filter((n) => active.includes(n.id))
-      .reduce((sum, n) => sum + n.cost, 0);
+  const saved = b.selected[key] || [];
+  const validation = validateBoard(nodes, saved, b.level, b.budget);
+  const { active, cost } = validation;
   const focus = nodes.find((n) => n.id === b.focus);
   const update = (patch: Partial<typeof b>) =>
     set({ ...s, board: { ...b, ...patch } });
@@ -46,10 +52,10 @@ export default function Daevanion({
     msg("");
   }
   function toggle(n: Node) {
-    if (active.includes(n.id)) {
+    if (saved.includes(n.id)) {
       const selected = connected(
         nodes,
-        active.filter((id) => id !== n.id),
+        saved.filter((id) => id !== n.id),
       );
       update({ selected: { ...b.selected, [key]: selected } });
       msg("Removed node and any disconnected branches.");
@@ -115,6 +121,19 @@ export default function Daevanion({
         through the lowest-cost connected path. Only orthogonally adjacent
         non-empty nodes connect.
       </p>
+      {validation.overBudget && (
+        <p role="alert">
+          This board is over budget. Its bonuses are inactive until points or
+          selections are corrected.
+        </p>
+      )}
+      {validation.invalid.length > 0 && (
+        <p role="alert">
+          {validation.invalid.length} saved nodes are level-locked, disconnected
+          or unavailable. Their effects are excluded. Select a saved node to
+          remove its branch, or reset this board.
+        </p>
+      )}
       {!board ? (
         <p>
           No {b.dataset === "s" ? "start" : "advanced"} boards in this snapshot
@@ -131,7 +150,9 @@ export default function Daevanion({
                     key={n.id}
                     className={
                       "armory-node " +
-                      (active.includes(n.id) ? "selected " : "") +
+                      (saved.includes(n.id) || n.g === "start"
+                        ? "selected "
+                        : "") +
                       (n.id === b.focus ? "focused" : "")
                     }
                     style={{ gridRow: n.r, gridColumn: n.c }}
@@ -169,7 +190,7 @@ export default function Daevanion({
                   className="primary"
                   onClick={() => toggle(focus)}
                 >
-                  {active.includes(focus.id)
+                  {saved.includes(focus.id)
                     ? "Remove branch"
                     : "Add connected path"}
                 </button>

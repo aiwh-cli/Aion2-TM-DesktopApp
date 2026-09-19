@@ -190,3 +190,204 @@ it("normalizes hostile or malformed nested profile shapes", () => {
   expect(s.arcana.cards.Chalice.rolls).toEqual([{ id: "", level: 1 }]);
   expect(normalizeArmoryState(null).builds.length).toBe(1);
 });
+
+import { readFileSync } from "node:fs";
+import {
+  classMatches,
+  normalizeNodes,
+  classPools,
+  arcanaBonuses,
+  equippedEntries,
+  validateBoard,
+  boardSkillBonuses,
+  validSpecs,
+  type Skill,
+  type ArcanaPools,
+} from "./model";
+const fixture = (name: string) =>
+  JSON.parse(
+    readFileSync(
+      new URL("../../public/data/" + name + ".json", import.meta.url),
+      "utf8",
+    ),
+  );
+const realItems: Item[] = fixture("items_all").items;
+const realSkills: Skill[] = fixture("skills_all").skills;
+const startNodes: Node[] = normalizeNodes(fixture("daevanion_boards_s").nodes);
+const advancedNodes: Node[] = normalizeNodes(
+  fixture("daevanion_boards_a").nodes,
+);
+const realPools: ArcanaPools = fixture("arcana_class_skills");
+describe("release fixture regressions", () => {
+  it("maps Spiritmaster and Brawler catalog weapons to playable classes, including Gauntlets", () => {
+    for (const [catalog, cls, categories] of [
+      ["Spiritmaster", "Elementalist", ["Orb"]],
+      ["Brawler", "Fighter", ["Fist", "Gauntlet"]],
+    ] as const) {
+      const items = realItems.filter((i) => i.classNames?.includes(catalog));
+      expect(items.length).toBeGreaterThan(0);
+      expect(
+        normalizeArmoryState({
+          className: catalog,
+          builds: [{ className: catalog }],
+        }).className,
+      ).toBe(cls);
+      expect(
+        normalizeArmoryState({ builds: [{ className: catalog }] }).builds[0]
+          .className,
+      ).toBe(cls);
+      for (const category of categories) {
+        const item = items.find((i) => i.categoryName === category)!;
+        expect(item).toBeDefined();
+        expect(classMatches(item, cls)).toBe(true);
+        expect(
+          fits(
+            item,
+            "Weapon",
+            cls,
+            item.name.includes("Archon") ? "dark" : "light",
+          ),
+        ).toBe(true);
+        expect(fits(item, "Weapon", "Cleric")).toBe(false);
+      }
+    }
+  });
+  it("normalizes numeric start skill IDs and string advanced IDs for effective bonuses", () => {
+    for (const nodes of [startNodes, advancedNodes]) {
+      const target =
+        nodes === startNodes
+          ? nodes.find((n) => n.id === "410037")!
+          : nodes.find(
+              (n) =>
+                n.e.some((e) => e.t === "k") &&
+                route(
+                  nodes.filter((x) => x.b === n.b),
+                  [],
+                  n.id,
+                ).length,
+            )!;
+      const board = nodes.filter((n) => n.b === target.b),
+        path = route(board, [], target.id);
+      expect(path).toContain(target.id);
+      const effect = target.e.find((e) => e.t === "k")!;
+      expect(typeof effect.skill_id).toBe("string");
+      expect(realSkills.some((s) => s.id === effect.skill_id)).toBe(true);
+      expect(
+        boardSkillBonuses(board, path, 45, 10000).totals[effect.skill_id!],
+      ).toBeGreaterThan(0);
+    }
+  });
+  it("drops hidden import keys and excludes incompatible visible equipment from totals", () => {
+    const item = realItems.find((i) => i.id === 110120001)!;
+    const state = normalizeArmoryState({
+      builds: [
+        {
+          gear: {
+            Hidden: { id: item.id, level: 0, cap: 20 },
+            Ring: { id: item.id, level: 0, cap: 20 },
+            Weapon: { id: item.id, level: 0, cap: 20 },
+          },
+        },
+      ],
+      arcana: {
+        cards: { Hidden: { theme: "Vigor", grade: "Unique", rolls: [] } },
+      },
+    });
+    expect(state.builds[0].gear.Hidden).toBeUndefined();
+    expect(state.arcana.cards.Hidden).toBeUndefined();
+    expect(
+      equippedEntries(
+        state.builds[0].gear,
+        realItems,
+        "Gladiator",
+        "light",
+      ).map((g) => g.slot),
+    ).toEqual(["Weapon"]);
+    expect(
+      equippedEntries(
+        { Hidden: { id: item.id, level: 0, cap: 20 } },
+        realItems,
+        "Gladiator",
+        "light",
+      ),
+    ).toEqual([]);
+  });
+  it("excludes hidden, duplicate, wrong-class and over-budget Arcana cards from bonuses", () => {
+    const pools = classPools(realPools, "Gladiator"),
+      id = pools.Chalice[0].id;
+    const cards = {
+      Hidden: { theme: "Vigor", grade: "Unique", rolls: [{ id, level: 4 }] },
+      Chalice: {
+        theme: "Vigor",
+        grade: "Unique",
+        rolls: [
+          { id, level: 4 },
+          { id, level: 4 },
+        ],
+      },
+    };
+    expect(arcanaBonuses(cards, pools).totals).toEqual({});
+    const valid = {
+      theme: "Vigor",
+      grade: "Unique",
+      rolls: [{ id, level: 4 }],
+    };
+    expect(arcanaBonuses({ Chalice: valid }, pools).totals[id]).toBe(4);
+    expect(
+      arcanaBonuses({ Chalice: valid }, classPools(realPools, "Cleric")).totals,
+    ).toEqual({});
+    expect(
+      arcanaBonuses(
+        {
+          Chalice: {
+            theme: "Vigor",
+            grade: "Rare",
+            rolls: [
+              { id, level: 4 },
+              { id: pools.Chalice[1].id, level: 2 },
+            ],
+          },
+        },
+        pools,
+      ).totals,
+    ).toEqual({});
+  });
+  it("deactivates level-locked, over-budget and disconnected real board effects after settings change", () => {
+    const target = startNodes.find((n) => n.id === "410037")!,
+      nodes = startNodes.filter((n) => n.b === target.b),
+      path = route(nodes, [], target.id),
+      skill = target.e.find((e) => e.t === "k")!.skill_id!;
+    expect(
+      boardSkillBonuses(nodes, path, 45, 10000).totals[skill],
+    ).toBeGreaterThan(0);
+    const lowered = boardSkillBonuses(nodes, path, 1, 10000);
+    expect(lowered.invalid.length).toBeGreaterThan(0);
+    expect(lowered.totals[skill]).toBeUndefined();
+    const noPoints = boardSkillBonuses(nodes, path, 45, 0);
+    expect(noPoints.overBudget).toBe(true);
+    expect(noPoints.totals).toEqual({});
+    const disconnected = nodes.find(
+      (n) => n.e.some((e) => e.t === "k") && route(nodes, [], n.id).length > 2,
+    )!;
+    expect(
+      validateBoard(nodes, [disconnected.id], 45, 10000).invalid,
+    ).toContain(disconnected.id);
+    expect(
+      boardSkillBonuses(nodes, [disconnected.id], 45, 10000).totals,
+    ).toEqual({});
+  });
+  it("deactivates saved specializations when only external bonus levels disappear", () => {
+    const skill = realSkills.find(
+      (s) =>
+        s.type === "active" &&
+        s.specializations.some((x) => x.parentSkillLvl > 10),
+    )!;
+    const spec = skill.specializations.find((x) => x.parentSkillLvl > 10)!;
+    const saved = [spec.id];
+    expect(
+      validSpecs(skill, saved, Math.max(12, spec.parentSkillLvl)),
+    ).toContain(spec.id);
+    expect(validSpecs(skill, saved, 10)).toEqual([]);
+    expect(saved).toEqual([spec.id]); // retained for removal/recovery, never active while locked
+  });
+});

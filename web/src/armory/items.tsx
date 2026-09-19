@@ -1,6 +1,6 @@
 import type { ArmoryState } from "./state";
 import type { Item } from "./model";
-import { classes, stats } from "./model";
+import { classes, stats, classMatches } from "./model";
 import { useData, Select, Loading } from "./shared";
 export default function Items({
   state: s,
@@ -17,9 +17,7 @@ export default function Items({
       i.name.toLowerCase().includes(s.query.toLowerCase()) &&
       (!s.category || i.categoryName === s.category) &&
       (!s.grade || i.grade === s.grade) &&
-      (!s.className ||
-        !i.classNames.length ||
-        i.classNames.includes(s.className)) &&
+      (!s.className || classMatches(i, s.className)) &&
       (!s.mode || i.options.some((x) => x.includes(s.mode))),
   );
   const selected = items.find((i) => i.id === s.selected);

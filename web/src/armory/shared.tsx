@@ -1,3 +1,4 @@
+import { normalizeNodes } from "./model";
 import { useEffect, useState } from "react";
 export function useData<T>(file: string) {
   const [data, set] = useState<T>();
@@ -19,6 +20,8 @@ export function useData<T>(file: string) {
             classNames: Array.isArray(item.classNames) ? item.classNames : [],
           }));
         }
+        if (file.startsWith("daevanion_boards_") && Array.isArray(d.nodes))
+          d.nodes = normalizeNodes(d.nodes);
         if (live) set(d);
       })
       .catch((e) => {
