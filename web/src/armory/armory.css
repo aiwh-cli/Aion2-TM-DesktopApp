@@ -1,0 +1,253 @@
+.armory {
+  --armory-line: #343e39;
+  --armory-sage: #a9c6af;
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.armory .panel {
+  padding: 22px;
+  background: #191f1d;
+  border: 1px solid var(--armory-line);
+  border-radius: 12px;
+  min-width: 0;
+}
+.armory .toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.armory .field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  color: #a7b5ab;
+  flex: 1;
+}
+.armory input,
+.armory select {
+  min-height: 40px;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  background: #111613;
+  color: #e7ece7;
+  border: 1px solid #465249;
+  border-radius: 6px;
+  padding: 9px;
+}
+.armory input[type="checkbox"] {
+  width: 17px;
+  min-height: 17px;
+  accent-color: #a9c6af;
+}
+.armory button {
+  cursor: pointer;
+  background: #242e27;
+  color: #e7ece7;
+  border: 1px solid #465249;
+  border-radius: 6px;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+.armory button:hover {
+  border-color: #a9c6af;
+}
+.armory button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.armory button:focus-visible,
+.armory input:focus-visible,
+.armory select:focus-visible {
+  outline: 2px solid #dfc894;
+  outline-offset: 3px;
+}
+.armory .selected,
+.armory button[aria-pressed="true"] {
+  background: #344d3d;
+  border-color: #b7cfba;
+}
+.armory .primary {
+  background: #bdcca9;
+  color: #111b14;
+}
+.armory-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px;
+}
+.armory-list {
+  max-height: 660px;
+  overflow: auto;
+}
+.armory-row {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  margin-bottom: 6px;
+  gap: 12px;
+}
+.armory-row strong {
+  font-weight: 500;
+}
+.armory-row small {
+  display: block;
+  color: #a0aea4;
+  margin-top: 5px;
+  font-size: 11px;
+}
+.armory-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+}
+.armory-gear {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) 80px 85px;
+  gap: 10px;
+  align-items: end;
+  border-bottom: 1px solid #343e39;
+  padding: 12px 0;
+}
+.armory-gear details {
+  grid-column: 1/-1;
+}
+.armory-gear select {
+  width: 100%;
+}
+.armory-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+.armory-chips button {
+  font-size: 11px;
+}
+.armory h2 {
+  font-size: 20px;
+  font-weight: 500;
+}
+.armory h3 {
+  font-size: 16px;
+  font-weight: 500;
+}
+.armory p {
+  line-height: 1.6;
+  font-size: 13px;
+}
+.armory table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+.armory th,
+.armory td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #343e39;
+}
+.armory .table-wrap {
+  overflow-x: auto;
+}
+.armory table input {
+  min-width: 85px;
+}
+.armory .muted {
+  color: #a7b5ab;
+}
+.armory .badge {
+  font-size: 11px;
+  color: #dac89f;
+  background: #2a2b22;
+  padding: 5px 8px;
+  border-radius: 4px;
+}
+.armory .stat-card {
+  padding: 15px;
+  border: 1px solid #4a5b4d;
+  border-radius: 7px;
+}
+.armory-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.armory-check input {
+  flex-shrink: 0;
+}
+.armory-board-scroll {
+  overflow: auto;
+}
+.armory-board {
+  display: grid;
+  grid-template-columns: repeat(15, 33px);
+  grid-template-rows: repeat(15, 33px);
+  gap: 3px;
+  min-width: 537px;
+  min-height: 537px;
+  background:
+    linear-gradient(#20292380 1px, transparent 1px),
+    linear-gradient(90deg, #20292380 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+.armory .armory-node {
+  min-height: 33px;
+  padding: 0;
+  font-size: 11px;
+  border-radius: 5px;
+}
+.armory .armory-node.focused {
+  outline: 2px solid #dfc894;
+}
+.armory-roll {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 8px;
+  margin: 12px 0;
+}
+.armory details {
+  margin-top: 12px;
+}
+.armory summary {
+  cursor: pointer;
+  padding: 6px 0;
+  color: #b7cfba;
+}
+.armory [role="alert"] {
+  color: #ffc7a8;
+}
+@media (max-width: 1000px) {
+  .armory-columns {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .armory .panel {
+    padding: 15px;
+  }
+  .armory .toolbar > .field {
+    flex-basis: 100%;
+  }
+  .armory-gear {
+    grid-template-columns: minmax(0, 1fr) 65px 65px;
+  }
+  .armory .toolbar {
+    align-items: stretch;
+  }
+  .armory-gear input {
+    padding: 7px;
+  }
+  .armory-row {
+    min-height: 60px;
+  }
+}
