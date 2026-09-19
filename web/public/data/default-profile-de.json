@@ -1,0 +1,838 @@
+{
+  "profile_name": "Default_de",
+  "theme": "frostbite",
+  "language": "de",
+  "settings": {
+    "daily_reset_time": "09:00",
+    "weekly_reset_day": "Mi",
+    "weekly_reset_time": "05:00",
+    "season_reset_datetime": "",
+    "show_events": true,
+    "shugo_enabled": false,
+    "shugo_start_minute": 0,
+    "shugo_interval_text": "1h",
+    "riss_enabled": false,
+    "riss_anchor_hour": 0,
+    "riss_interval_text": "3h",
+    "auto_save": true,
+    "notification_enabled": false,
+    "notification_warn_minutes": 1,
+    "notification_sync": false,
+    "notification_shugo_enabled": false,
+    "notification_shugo_warn_minutes": 0,
+    "notification_riss_enabled": false,
+    "notification_riss_warn_minutes": 10,
+    "notification_sound": "",
+    "timer_categories": [
+      "Custom Timer"
+    ],
+    "custom_timers": []
+  },
+  "tasks": {
+    "tasks": [],
+    "shopping": []
+  },
+  "flow_maps": {
+    "Map 1": {
+      "nodes": {
+        "de000001-0000-0000-0000-000000000001": {
+          "id": "de000001-0000-0000-0000-000000000001",
+          "title": "Hauptcharakter",
+          "description": "Erstelle einen neuen Charakter.",
+          "icon": "character",
+          "status": "active",
+          "completed": false,
+          "x": 3780.0,
+          "y": 4000.0,
+          "children": []
+        }
+      },
+      "root_node_id": "de000001-0000-0000-0000-000000000001"
+    }
+  },
+  "active_flow_map": "Map 1",
+  "item_templates": [
+    {
+      "title": "Odyle",
+      "location": "Windbreeze Store",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "price": "100",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000005",
+      "amount": "1"
+    },
+    {
+      "title": "Resurrection Stone",
+      "location": "Windbreeze Store",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000006",
+      "amount": "1"
+    },
+    {
+      "title": "Daily Dungeon Tickets",
+      "location": "Windbreeze Store",
+      "schedule": "daily",
+      "priority": "middle",
+      "is_general": false,
+      "price": "100",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000007"
+    },
+    {
+      "title": "Instant Clear Ticket: Daily Dungeon",
+      "location": "Windbreeze Weekly Shop",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "price": "30",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000008"
+    },
+    {
+      "title": "Instant Clear Ticket: Nightmare",
+      "location": "Windbreeze Weekly Shop",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "price": "30",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000009"
+    },
+    {
+      "title": "Soul Crystal",
+      "location": "Windbreeze Weekly Shop",
+      "schedule": "weekly",
+      "priority": "low",
+      "is_general": false,
+      "price": "1",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000010"
+    },
+    {
+      "title": "Pet: Auto-Loot Voucher",
+      "location": "Windbreeze Weekly Shop",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "3000",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000011"
+    },
+    {
+      "title": "Artisan's Ultimate Refining Stone (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "middle",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000012"
+    },
+    {
+      "title": "Wrathful Mind (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000013"
+    },
+    {
+      "title": "Wrathful Will (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000014"
+    },
+    {
+      "title": "Wrathful Ego (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000015"
+    },
+    {
+      "title": "Wrathful Wish (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000016"
+    },
+    {
+      "title": "Wrathful Sublimation (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000017"
+    },
+    {
+      "title": "Wrathful Belief (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000018"
+    },
+    {
+      "title": "Wrathful Flame (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000019"
+    },
+    {
+      "title": "Radiant Odyle (Bound)",
+      "location": "Season Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000020"
+    },
+    {
+      "title": "Nightmare Wings",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "middle",
+      "is_general": false,
+      "price": "210",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000021"
+    },
+    {
+      "title": "Daevanion Crystal: Ariel",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "6.4",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000022"
+    },
+    {
+      "title": "Wisdom Stone",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "5.6",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000023"
+    },
+    {
+      "title": "Awakened Skin Breastplate",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "10.8",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000024"
+    },
+    {
+      "title": "Awakened Skin Greaves",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "8",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000025"
+    },
+    {
+      "title": "Awakened Skin Helm",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "6.75",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000026"
+    },
+    {
+      "title": "Awakened Skin Pauldrons",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "6.750",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000027"
+    },
+    {
+      "title": "Awakened Skin Gloves",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "5.300",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000028"
+    },
+    {
+      "title": "Awakened Skin Boots",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "6.750",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000029"
+    },
+    {
+      "title": "Awakened Skin Cloak",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "5.300",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000030"
+    },
+    {
+      "title": "Colossus: Zikel's Apparition",
+      "location": "Nightmare Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "14",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000031"
+    },
+    {
+      "title": "Soul Crystal (Bound)",
+      "location": "Weekly Nightmare Store",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "price": "50",
+      "currency": "nightmare",
+      "id": "de000002-0000-0000-0000-000000000032"
+    },
+    {
+      "title": "Wisdom Stone",
+      "location": "Shugo Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "2.8",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000033"
+    },
+    {
+      "title": "Daevanion Crystal",
+      "location": "Shugo Store",
+      "schedule": "season",
+      "priority": "high",
+      "is_general": false,
+      "price": "0.4",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000034"
+    },
+    {
+      "title": "Violet Butterfly Wings",
+      "location": "Shugo Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "2.1",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000035"
+    },
+    {
+      "title": "Spirit Wings",
+      "location": "Shugo Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "4.200",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000036"
+    },
+    {
+      "title": "Springflower Butterfly Wings",
+      "location": "Shugo Store",
+      "schedule": "season",
+      "priority": "low",
+      "is_general": false,
+      "price": "8.350",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000037"
+    },
+    {
+      "title": "Soul Crystal (Bound)",
+      "location": "Shugo Store",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "price": "20",
+      "currency": "shugo",
+      "id": "de000002-0000-0000-0000-000000000038"
+    },
+    {
+      "title": "Abyss Command (Bound)",
+      "location": "Abyss Command Shop",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "price": "15",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000039"
+    },
+    {
+      "title": "Abyss Command: Proficiency (Bound)",
+      "location": "Abyss Command Shop",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "price": "37.5",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000040"
+    },
+    {
+      "title": "Abyss Command: Elite (Bound)",
+      "location": "Abyss Command Shop",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "price": "75",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000041"
+    },
+    {
+      "title": "Abyss Command: Special Mission (Bound)",
+      "location": "Abyss Command Shop",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "price": "150",
+      "currency": "kinah",
+      "id": "de000002-0000-0000-0000-000000000042"
+    },
+    {
+      "title": "Altgard Commands",
+      "location": "Altgard",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "price": "15",
+      "currency": "kinah",
+      "id": "5ee5bc4a-3b51-4262-a7c9-756babbe3ba4"
+    }
+  ],
+  "task_templates": [
+    {
+      "title": "Sanctum (2800gs+)",
+      "location": "Raid",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "id": "de000003-0000-0000-0000-000000000001"
+    },
+    {
+      "title": "Daily Commands",
+      "location": "Journal",
+      "schedule": "daily",
+      "priority": "high",
+      "is_general": false,
+      "id": "de000003-0000-0000-0000-000000000002"
+    },
+    {
+      "title": "Ascension Trial",
+      "location": "Direct Entry",
+      "schedule": "weekly",
+      "priority": "high",
+      "is_general": false,
+      "id": "de000003-0000-0000-0000-000000000003"
+    },
+    {
+      "title": "Nightmare",
+      "location": "Direct Entry",
+      "schedule": "daily",
+      "priority": "high",
+      "is_general": false,
+      "id": "de000003-0000-0000-0000-000000000004"
+    },
+    {
+      "title": "Duty Daily Command",
+      "location": "Journal",
+      "schedule": "daily",
+      "priority": "low",
+      "is_general": false,
+      "id": "de000003-0000-0000-0000-000000000005"
+    },
+    {
+      "title": "Monsterfarm 30min",
+      "location": "",
+      "schedule": "daily",
+      "priority": "middle",
+      "is_general": false,
+      "id": "fb2cbcc1-6748-44df-a030-f054895329be"
+    },
+    {
+      "title": "Secret Dungeons (all)",
+      "location": "",
+      "schedule": "season",
+      "priority": "middle",
+      "is_general": false,
+      "id": "80208a98-a5f5-47d4-aa9b-2aef5dad5b87"
+    },
+    {
+      "title": "Daily Dungeon",
+      "location": "Wind Breeze Store",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "id": "daf5cd99-ccd5-4308-b7e4-e5cb26a97841"
+    },
+    {
+      "title": "Expedition: Conquest",
+      "location": "",
+      "schedule": "daily",
+      "priority": "middle",
+      "is_general": false,
+      "id": "6c3f946d-1d2c-4e9e-8914-8e67e62cc600"
+    },
+    {
+      "title": "Transcendence",
+      "location": "",
+      "schedule": "daily",
+      "priority": "middle",
+      "is_general": false,
+      "id": "868ae271-e5e0-450e-94db-e62228663480"
+    },
+    {
+      "title": "Battlefield",
+      "location": "",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "id": "ae0b2940-8afd-47d0-b045-f9d555e12c3a"
+    },
+    {
+      "title": "Craft: Odyle Energy",
+      "location": "Morph Method",
+      "schedule": "weekly",
+      "priority": "middle",
+      "is_general": false,
+      "id": "14a719f9-468a-40ab-b48c-9f6a0e8881c2"
+    },
+    {
+      "title": "Spacetime Rift",
+      "location": "",
+      "schedule": "daily",
+      "priority": "middle",
+      "is_general": false,
+      "id": "d146a3b2-92f9-4976-b9be-315740643e43"
+    }
+  ],
+  "standard_templates": {
+    "shopping": [
+      {
+        "title": "Odyle",
+        "location": "Windbreeze Store",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": false,
+        "price": "100",
+        "currency": "kinah",
+        "id": "b343891d-58a7-4ce8-adcb-962ea373c54e",
+        "amount": "1",
+        "source_id": "de000002-0000-0000-0000-000000000005"
+      },
+      {
+        "title": "Resurrection Stone",
+        "location": "Windbreeze Store",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": false,
+        "price": "0",
+        "currency": "kinah",
+        "id": "94751131-8e37-4936-8daf-c36a1c08515f",
+        "amount": "1",
+        "source_id": "de000002-0000-0000-0000-000000000006"
+      },
+      {
+        "title": "Entry Tickets: Daily Dungeon",
+        "location": "Windbreeze Store",
+        "schedule": "daily",
+        "priority": "middle",
+        "is_general": false,
+        "price": "100",
+        "currency": "kinah",
+        "id": "4f75b115-e5d2-4ed1-baac-0af9daeac561",
+        "amount": "1",
+        "source_id": "de000002-0000-0000-0000-000000000007"
+      },
+      {
+        "title": "Instant Clear Ticket: Daily Dungeon",
+        "location": "Windbreeze Weekly Shop",
+        "schedule": "weekly",
+        "priority": "middle",
+        "is_general": false,
+        "price": "30",
+        "currency": "kinah",
+        "id": "2c3b31ec-e57f-4d1d-bd77-a2595472d505",
+        "source_id": "de000002-0000-0000-0000-000000000008"
+      },
+      {
+        "title": "Instant Clear Ticket: Nightmare",
+        "location": "Windbreeze Weekly Shop",
+        "schedule": "weekly",
+        "priority": "middle",
+        "is_general": false,
+        "price": "30",
+        "currency": "kinah",
+        "id": "c7281096-ee11-4992-b5a0-3d68fa473ab5",
+        "source_id": "de000002-0000-0000-0000-000000000009"
+      },
+      {
+        "title": "Soul Crystal",
+        "location": "Windbreeze Weekly Shop",
+        "schedule": "weekly",
+        "priority": "low",
+        "is_general": false,
+        "price": "1",
+        "currency": "kinah",
+        "id": "83c9828a-52cd-4505-ac30-8c5d9dc51927",
+        "source_id": "de000002-0000-0000-0000-000000000010"
+      },
+      {
+        "title": "Daevanion Crystal: Ariel",
+        "location": "Nightmare Store",
+        "schedule": "season",
+        "priority": "high",
+        "is_general": false,
+        "price": "6,4",
+        "currency": "nightmare",
+        "id": "074211b9-6d47-4fad-a28c-e1dab7174447",
+        "amount": "1",
+        "character": "",
+        "_from_import": false,
+        "source_id": "de000002-0000-0000-0000-000000000022"
+      },
+      {
+        "title": "Soul Crystal (Bound)",
+        "location": "Weekly Nightmare Store",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": false,
+        "price": "50",
+        "currency": "nightmare",
+        "id": "f9663849-55e0-408c-b728-15493cadf62d",
+        "source_id": "de000002-0000-0000-0000-000000000032"
+      },
+      {
+        "title": "Soul Crystal (Bound)",
+        "location": "Shugo Store",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": false,
+        "price": "20",
+        "currency": "shugo",
+        "id": "1cfa17dc-c59b-461c-905a-dcd0eff2fdfc",
+        "source_id": "de000002-0000-0000-0000-000000000038"
+      },
+      {
+        "title": "Abyss Command (Bound)",
+        "location": "Abyss Command Shop",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": false,
+        "price": "15",
+        "currency": "kinah",
+        "id": "9180243f-0b42-480c-b5a6-e329d3e9f9b8",
+        "amount": "1",
+        "character": "",
+        "_from_import": false,
+        "source_id": "de000002-0000-0000-0000-000000000039"
+      },
+      {
+        "title": "Abyss Command: Proficiency (Bound)",
+        "location": "Abyss Command Shop",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": false,
+        "price": "37,5",
+        "currency": "kinah",
+        "id": "05cab7f2-8863-4a8b-a503-6f0ec962fba9",
+        "amount": "1",
+        "character": "",
+        "_from_import": false,
+        "source_id": "de000002-0000-0000-0000-000000000040"
+      },
+      {
+        "title": "Abyss Command: Elite (Bound)",
+        "location": "Abyss Command Shop",
+        "schedule": "weekly",
+        "priority": "middle",
+        "is_general": false,
+        "price": "75",
+        "currency": "kinah",
+        "id": "6f9b77fe-9db2-48e0-83ca-732824972635",
+        "amount": "1",
+        "character": "",
+        "_from_import": false,
+        "source_id": "de000002-0000-0000-0000-000000000041"
+      },
+      {
+        "title": "Abyss Command: Special Mission (Bound)",
+        "location": "Abyss Command Shop",
+        "schedule": "weekly",
+        "priority": "middle",
+        "is_general": false,
+        "price": "150",
+        "currency": "kinah",
+        "id": "f0d07a3b-0615-4f1e-ba9d-8f948a74c297",
+        "amount": "1",
+        "character": "",
+        "_from_import": false,
+        "source_id": "de000002-0000-0000-0000-000000000042"
+      }
+    ],
+    "tasks": [
+      {
+        "title": "Sanctum (2800gs+)",
+        "location": "Raid",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": true,
+        "id": "1907bef1-e3a3-4589-a6e4-1bef9d729309",
+        "source_id": "de000003-0000-0000-0000-000000000001"
+      },
+      {
+        "title": "Daily Commands",
+        "location": "Journal",
+        "schedule": "daily",
+        "priority": "high",
+        "is_general": true,
+        "id": "821f99d9-6d66-4ca0-bfd8-fec982e48190",
+        "source_id": "de000003-0000-0000-0000-000000000002"
+      },
+      {
+        "title": "Ascension Trial",
+        "location": "Direct Entry",
+        "schedule": "weekly",
+        "priority": "high",
+        "is_general": true,
+        "id": "b77f265d-58ac-46b2-b9ad-d7b49c0a757e",
+        "source_id": "de000003-0000-0000-0000-000000000003"
+      },
+      {
+        "title": "Nightmare",
+        "location": "Direct Entry",
+        "schedule": "daily",
+        "priority": "high",
+        "is_general": true,
+        "id": "85a2cefd-2809-4b5a-96a9-9b997fa3ecb9",
+        "source_id": "de000003-0000-0000-0000-000000000004"
+      },
+      {
+        "title": "Monsterfarm 30min",
+        "location": "",
+        "schedule": "daily",
+        "priority": "middle",
+        "is_general": false,
+        "id": "8fca96cd-c353-42be-9e23-678667a19c02",
+        "source_id": "fb2cbcc1-6748-44df-a030-f054895329be"
+      },
+      {
+        "title": "Secret Dungeons (all)",
+        "location": "",
+        "schedule": "season",
+        "priority": "middle",
+        "is_general": false,
+        "id": "59356810-2412-4ca5-84a0-53a651a38858",
+        "source_id": "80208a98-a5f5-47d4-aa9b-2aef5dad5b87"
+      },
+      {
+        "title": "Daily Dungeon",
+        "location": "Wind Breeze Store",
+        "schedule": "weekly",
+        "priority": "middle",
+        "is_general": false,
+        "id": "92ea6730-0f2f-47ab-a3c9-1f9d1aff6412",
+        "source_id": "daf5cd99-ccd5-4308-b7e4-e5cb26a97841"
+      },
+      {
+        "title": "Duty Daily Command",
+        "location": "Journal",
+        "schedule": "daily",
+        "priority": "low",
+        "is_general": false,
+        "id": "2d84cc04-c0d4-4387-917d-3075351cc9fe",
+        "source_id": "de000003-0000-0000-0000-000000000005"
+      },
+      {
+        "title": "Expedition: Conquest",
+        "location": "",
+        "schedule": "daily",
+        "priority": "middle",
+        "is_general": false,
+        "id": "62817d83-094b-4633-bc01-6d65d1217fbf",
+        "source_id": "6c3f946d-1d2c-4e9e-8914-8e67e62cc600"
+      },
+      {
+        "title": "Transcendence",
+        "location": "",
+        "schedule": "daily",
+        "priority": "middle",
+        "is_general": false,
+        "id": "75d38f7d-f88b-42f6-b149-e96ccde2ce43",
+        "source_id": "868ae271-e5e0-450e-94db-e62228663480"
+      },
+      {
+        "title": "Battlefield",
+        "location": "",
+        "schedule": "weekly",
+        "priority": "middle",
+        "is_general": false,
+        "id": "03605249-614b-466a-b22e-2d45a5b3eedf",
+        "source_id": "ae0b2940-8afd-47d0-b045-f9d555e12c3a"
+      },
+      {
+        "title": "Craft: Odyle Energy",
+        "location": "Morph Method",
+        "schedule": "weekly",
+        "priority": "middle",
+        "is_general": false,
+        "id": "c6d454c6-db3b-4bf9-a170-69a7e01522e4",
+        "source_id": "14a719f9-468a-40ab-b48c-9f6a0e8881c2"
+      },
+      {
+        "title": "Spacetime Rift",
+        "location": "",
+        "schedule": "daily",
+        "priority": "middle",
+        "is_general": false,
+        "id": "4e0da6df-753e-4114-af99-b9b1cba40fec",
+        "source_id": "d146a3b2-92f9-4976-b9be-315740643e43"
+      }
+    ]
+  }
+}

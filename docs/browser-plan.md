@@ -1,0 +1,24 @@
+# Browser conversion
+
+Spec: user authorized a full browser version of Aion2 TM, including Armory and planners, in aiwh-cli's fork and a live public Vercel website.
+
+## Global Constraints
+- Preserve the original Python desktop source and credits. Build a React/TypeScript app in web/.
+- Use the real v2.0.7 release datasets in web/public/data. Never invent game stats or claim live synchronization. Explain estimates and data dates.
+- Browser data stays on this device; support export/import backup and multiple profiles. No shared unauthenticated server database.
+- Do not add secrets. Do not run Windows executables. Desktop overlay/auto-update are desktop-only.
+- Dark charcoal / muted sage / parchment-gold aesthetic, readable dense tool UI, keyboard labels and mobile layout. Main app owns global CSS; module-specific CSS may be imported.
+- All changing game calculations require focused tests. Build and browser smoke tests precede deployment.
+
+### Task 1: Armory and game planners
+Own ONLY web/src/armory/* (plus a report in the SDD workspace). Other files belong to controller. Do not spawn subagents.
+Implement the full Armory browser module: Item Database (search, category/class/grade/PvP-PvE filters, details and comparison), crafting calculator (recursive material quantities, fees, direct/transfer recipe variants, editable material prices, totals and add materials to shopping), gear build planner (named per-class/race loadouts, slot restrictions, real catalog stats, enchant estimates based on upstream functions, wings, compare loadouts, quick set equip and property preferences), skill planner (class filter, skill/stigma budgets, levels, specialization requirements, favorites/priority, description), Daevanion boards (start and advanced datasets, class/deity selection, connected path routing, point totals, skill/stat bonuses), Arcana browser and five type-specific equip slots for Vigor/Magic, real skill rolls/grade constraints, best-case wishlist calculator based on upstream rules. Persist every user's planner value in ArmoryState, shared with main profile persistence.
+Use the upstream ItemDatabase/app.py formulas and real data shapes, translating behavior carefully. Data files already exist. Read only the relevant source sections as needed. Armory is substantial; modularize internally by tool. Keep unavailable external detail stats explicit; item options contain real catalog stats. Do not silently replace difficult tools with links or nonfunctional placeholders.
+Export from web/src/armory/index.tsx: type ArmoryTab = 'items'|'crafting'|'builds'|'skills'|'daevanion'|'arcana'; type ArmoryState; function createArmoryState(): ArmoryState; default component Armory({tab,state,onChange,onAddShopping}) where onChange(next:ArmoryState):void and onAddShopping(items:Array<{title:string;amount:number;price?:number;location?:string}>):void. Parent remounts component per active profile. All data paths are /data/{original filename}.json; icons /game-assets/{same relative path as ItemDatabase/assets}. Avoid editing package/config files; react and lucide-react are available. Use shared class names panel, toolbar, field, button, primary, secondary, muted, badge, empty-state, table-wrap, stat-card where convenient; add scoped armory.css. Parent will supply global font/colors/inputs.
+Tests: focused vitest tests for recursive craft quantity rounding/cycle handling, point caps, Arcana constraints, class/slot filtering and connected routing. Run npx vitest run web/src/armory (or npm test -- src/armory if root detection differs), npx tsc --noEmit (parent unfinished errors distinguish from own). Self-review. Commit only owned paths once done. Write full report to given path with implemented feature coverage, evidence, limitations and any required follow-up; return short status, commit, test summary.
+
+### Task 2: Core companion and integration
+Controller owns app shell, profiles/data validation, task/shopping CRUD and templates/CSV, daily/weekly event resets and custom timers, drag/drop flow-map editor, themes, all core tests. Connect Armory state to profile persistence. Support desktop profile import without deleting opaque fields. Browser export is round-trippable.
+
+### Task 3: Review and deployment
+Review module correctness and integrated persistence with focused tests. Run build and automated browser smoke on every tool, desktop and narrow mobile, export/import round trip, refresh retention. Publish web-version branch to own fork and create Vercel project aion2-tm-online in branson-1459s-projects. Set production branch web-version and deploy live per explicit authorization. Read provider metadata back, and open website in browser for visual inspection. Record actual limitations; do not claim full desktop parity if tests expose missing behavior.

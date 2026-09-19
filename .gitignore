@@ -23,3 +23,10 @@ ItemDatabase/data/
 
 # Discord announcement draft — internal, not part of the repo
 DISCORD.md
+# Browser companion
+node_modules/
+web/dist/
+.vercel/
+test-results/
+playwright-report/
+*.tsbuildinfo
