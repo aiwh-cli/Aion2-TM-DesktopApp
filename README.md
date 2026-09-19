@@ -1,3 +1,37 @@
+# Aion 2 Companion — browser edition
+
+This fork includes a desktop-browser adaptation in `web/`. The original Python/Qt desktop application is preserved below and in the original source folders. Browser development and Vercel deployment use the `web-version` branch.
+
+## Run the website
+
+```sh
+npm ci
+npm run dev
+```
+
+Build with `npm run build`; Vercel serves `web/dist`. Run calculation/persistence tests with `npm test`. For browser workflow tests, start the dev server, install Chromium with `npx playwright install chromium`, then run `npm run test:browser`.
+
+## Browser features
+
+- Tasks and shopping lists with priorities, characters, schedules, templates, CSV import/export and reset tracking.
+- Configurable daily/weekly/Shugo/Rift timers, custom countdowns and recurring timers.
+- Multiple profiles, JSON backups and desktop task/template/flow-map imports.
+- Editable progression flow maps, connections and guide mode.
+- Item search/comparison, recursive crafting calculator, named equipment loadouts and enchant estimates.
+- Skill planning, start/advanced Daevanion boards and connected path routing, five-slot Arcana planning and a best-case skill wishlist calculator.
+
+Profiles save to this browser on this device. There is no cloud account or cross-device synchronization. Export a backup from Settings before clearing browser data or moving to another browser. Original desktop Armory fields survive JSON round trips, but browser Armory plans use a separate schema and must be recreated when migrating.
+
+Game data is bundled from the original v2.0.7 release. See `web/public/data/manifest.json` for provenance and hashes. The item API returned HTTP 403 during implementation, so detailed live item statistics and automatic refresh are unavailable. Calculations use the release catalog; enchant caps/estimates, unknown Stigma budgets, uncertain remote crafting fees and raw wing units are labeled in their tools. Verify planned values against the game. The web interface is English.
+
+Desktop-only features (in-game overlay, Windows hooks and executable auto-updates) remain in the original app. This release targets desktop browsers.
+
+## Attribution
+
+Original Aion2 Task Manager by [blacksole](https://github.com/blacksole/Aion2-TM-DesktopApp). Source datasets reference shugo.gg, gamers4.life, questlog.gg and talentbuilds.com. Game artwork and game data belong to their respective owners. This fork does not replace or expand the upstream custom license; no new license grant is asserted for upstream material.
+
+---
+
 # Aion2 Task Manager
 
 **v2.0.7** — Modern desktop productivity manager for Aion players.

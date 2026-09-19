@@ -7,7 +7,7 @@ Spec: user authorized a full browser version of Aion2 TM, including Armory and p
 - Use the real v2.0.7 release datasets in web/public/data. Never invent game stats or claim live synchronization. Explain estimates and data dates.
 - Browser data stays on this device; support export/import backup and multiple profiles. No shared unauthenticated server database.
 - Do not add secrets. Do not run Windows executables. Desktop overlay/auto-update are desktop-only.
-- Dark charcoal / muted sage / parchment-gold aesthetic, readable dense tool UI, keyboard labels and mobile layout. Main app owns global CSS; module-specific CSS may be imported.
+- Dark charcoal / muted sage / parchment-gold aesthetic, readable dense tool UI, keyboard labels and desktop layout. Main app owns global CSS; module-specific CSS may be imported.
 - All changing game calculations require focused tests. Build and browser smoke tests precede deployment.
 
 ### Task 1: Armory and game planners
@@ -21,4 +21,4 @@ Tests: focused vitest tests for recursive craft quantity rounding/cycle handling
 Controller owns app shell, profiles/data validation, task/shopping CRUD and templates/CSV, daily/weekly event resets and custom timers, drag/drop flow-map editor, themes, all core tests. Connect Armory state to profile persistence. Support desktop profile import without deleting opaque fields. Browser export is round-trippable.
 
 ### Task 3: Review and deployment
-Review module correctness and integrated persistence with focused tests. Run build and automated browser smoke on every tool, desktop and narrow mobile, export/import round trip, refresh retention. Publish web-version branch to own fork and create Vercel project aion2-tm-online in branson-1459s-projects. Set production branch web-version and deploy live per explicit authorization. Read provider metadata back, and open website in browser for visual inspection. Record actual limitations; do not claim full desktop parity if tests expose missing behavior.
+Review module correctness and integrated persistence with focused tests. Run build and automated browser smoke on every tool, desktop only, export/import round trip, refresh retention. Publish web-version branch to own fork and create Vercel project aion2-tm-online in branson-1459s-projects. Set production branch web-version and deploy live per explicit authorization. Read provider metadata back, and open website in browser for visual inspection. Record actual limitations; do not claim full desktop parity if tests expose missing behavior.

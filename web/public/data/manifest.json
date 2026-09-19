@@ -1,0 +1,74 @@
+{
+  "upstream": "https://github.com/blacksole/Aion2-TM-DesktopApp",
+  "release": "v2.0.7",
+  "sourceCommit": "ca3efcc176cae313e85fdd04662a215aa3e4e794",
+  "importedAt": "2026-09-19T04:49:40.989123+00:00",
+  "sourceAsset": "https://github.com/blacksole/Aion2-TM-DesktopApp/releases/download/v2.0.7/Aion2_TM_v2.0.7.zip",
+  "mode": "bundled release snapshot; not a live feed",
+  "files": {
+    "arcana_info.json": {
+      "bytes": 56241,
+      "sha256": "263da296fa8358dc2bbc8721198fc6b44e2bb93b9bb838eca2027b3ac8eb469a"
+    },
+    "dungeons_all.json": {
+      "bytes": 243195,
+      "sha256": "0d326abb8002b3d178b3cd862f2618bec4e795892f15fb55d98848aea16f6dd1"
+    },
+    "recipes_all.json": {
+      "bytes": 1658528,
+      "sha256": "44567cc2e02b38ae0326a1ac1c7cd2a2d27df3ca09e97296fe014b2fcf64e8cb"
+    },
+    "arcana_class_skills.json": {
+      "bytes": 179002,
+      "sha256": "0a28b0dbc3ca288098c481a22ffe7d1fddc9ef7153574aa20ab133bf23864509"
+    },
+    "items_all.json": {
+      "bytes": 3239776,
+      "sha256": "e32ba87bff5d725ad0176059c82653d053407717582504a834e9ed8f5b45ea2d"
+    },
+    "dungeon_sets.json": {
+      "bytes": 1683,
+      "sha256": "6785350a93d9e690665a66f1ce1f67c33d54bfbfa2a6b6d2e50c70f9ce06360f"
+    },
+    "daevanion_boards_s.json": {
+      "bytes": 1505284,
+      "sha256": "2152fce7825f30ba2ae5f87d56fd65a475ae28589e132272af87d68d9498ec47"
+    },
+    "pantheon_items.json": {
+      "bytes": 57553,
+      "sha256": "f06699052c62b2b4b5f66e45b9481c1fe8aaae6a26c0f307b786edff2c7190a5"
+    },
+    "stat_priority_options.json": {
+      "bytes": 3206,
+      "sha256": "490b6a2f75398d2a95d0b98dce95a05638d244c1ebbcc9e5b326084d54561425"
+    },
+    "shop_items.json": {
+      "bytes": 17288,
+      "sha256": "914bf1a3c953d0dc223f661bfcb5ef30c4f2a90b42d5fe7eecbfbb0b26c982bd"
+    },
+    "daevanion_boards_a.json": {
+      "bytes": 2232517,
+      "sha256": "2177d578a992a5f61f2c760d84979e4e110268b57bf2a28f78aaa958d4474fea"
+    },
+    "wings_items.json": {
+      "bytes": 79264,
+      "sha256": "741d37026a522d846e8f78ec4d94deb848e3b65b6538dd8cea0c625b78231f71"
+    },
+    "skills_all.json": {
+      "bytes": 1202910,
+      "sha256": "c7b183eed96dad987408639839b66970aa3480a537106a34e9cf8054a3fefa7d"
+    },
+    "default-profile.json": {
+      "bytes": 25568,
+      "sha256": "71c7ef2fc2dc254e5c0eddf8c4d1dceae106b6984794f9a75c1d79534de00d8a"
+    },
+    "default-profile-ru.json": {
+      "bytes": 23772,
+      "sha256": "930c266da56774196ea8c678b7a08fdd9276cc15f377765b8cf91b3b0dad327c"
+    },
+    "default-profile-de.json": {
+      "bytes": 23737,
+      "sha256": "897a4e09024125ad574e308a3e2198e222506b2a5a31bfd17c4a6d6677aa8c4f"
+    }
+  }
+}
